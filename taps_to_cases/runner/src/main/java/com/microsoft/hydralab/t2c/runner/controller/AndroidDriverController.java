@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.t2c.runner.controller;
 
 import com.google.common.collect.ImmutableMap;
+import com.microsoft.hydralab.performance.PerformanceInspection;
+import com.microsoft.hydralab.performance.PerformanceInspectionService;
 import com.microsoft.hydralab.t2c.runner.T2CAppiumUtils;
-import io.appium.java_client.AppiumBy;
 import io.appium.java_client.android.AndroidDriver;
 import io.appium.java_client.android.nativekey.AndroidKey;
 import io.appium.java_client.android.nativekey.KeyEvent;
@@ -16,7 +18,6 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.PointerInput;
 import org.openqa.selenium.interactions.Sequence;
 import org.openqa.selenium.remote.RemoteWebElement;
-import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
 
 import java.time.Duration;
@@ -27,8 +28,8 @@ import java.util.Map;
 public class AndroidDriverController extends BaseDriverController {
     private final AndroidDriver androidDriver;
 
-    public AndroidDriverController(AndroidDriver androidDriver, Logger logger) {
-        super(androidDriver, logger);
+    public AndroidDriverController(AndroidDriver androidDriver, String udid, Logger logger) {
+        super(androidDriver, udid, logger);
         this.androidDriver = androidDriver;
     }
 
@@ -144,8 +145,28 @@ public class AndroidDriverController extends BaseDriverController {
     }
 
     @Override
+    public void inspectMemoryUsage(String targetApp, String description, boolean isReset) {
+        // TODO: Need to add memory stack profiling inspector here
+        PerformanceInspectionService.getInstance()
+                .inspect(PerformanceInspection.createAndroidMemoryInfoInspection(
+                        targetApp, this.udid, description, isReset));
+    }
+
+    @Override
+    public void inspectBatteryUsage(String targetApp, String description, boolean isReset) {
+        PerformanceInspectionService.getInstance()
+                .inspect(PerformanceInspection.createAndroidBatteryInfoInspection(
+                        targetApp, this.udid, description, isReset));
+    }
+
+    @Override
     public void paste(WebElement webElement) {
         String text = androidDriver.getClipboardText();
         input(webElement, text);
+    }
+
+    @Override
+    public void backToHome() {
+        pressKey(AndroidKey.HOME);
     }
 }

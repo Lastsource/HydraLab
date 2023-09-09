@@ -1,14 +1,15 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.center.service;
 
 import com.alibaba.fastjson.JSONObject;
-import com.microsoft.hydralab.common.entity.common.AgentUser;
 import com.microsoft.hydralab.common.entity.center.DeviceGroup;
 import com.microsoft.hydralab.common.entity.center.TestTaskQueuedInfo;
-import com.microsoft.hydralab.common.entity.common.TestTaskSpec;
+import com.microsoft.hydralab.common.entity.common.AgentUser;
 import com.microsoft.hydralab.common.entity.common.DeviceInfo;
 import com.microsoft.hydralab.common.entity.common.TestTask;
+import com.microsoft.hydralab.common.entity.common.TestTaskSpec;
 import com.microsoft.hydralab.common.util.Const;
 import com.microsoft.hydralab.common.util.HydraLabRuntimeException;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +20,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
-import java.util.*;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -28,6 +34,7 @@ public class TestTaskService {
     private static volatile AtomicBoolean isRunning = new AtomicBoolean(false);
     private final Logger logger = LoggerFactory.getLogger(TestTaskService.class);
     private final Queue<TestTaskSpec> taskQueue = new LinkedList<>();
+    // cannot use multiple queues within a map to change this data structure, as DEVICE and TASK has no explicit mapping relation
     @Resource
     DeviceAgentManagementService deviceAgentManagementService;
     @Resource
@@ -38,7 +45,9 @@ public class TestTaskService {
     TestDataService testDataService;
 
     public void addTask(TestTaskSpec task) {
-        taskQueue.offer(task);
+        synchronized (taskQueue) {
+            taskQueue.offer(task);
+        }
     }
 
     public Boolean isQueueEmpty() {
@@ -48,7 +57,12 @@ public class TestTaskService {
     public Boolean isDeviceFree(String deviceIdentifier) {
         Set<String> relatedIdentifiers = new HashSet<>();
         relatedIdentifiers.add(deviceIdentifier);
-        if (deviceIdentifier.startsWith(Const.DeviceGroup.GROUP_NAME_PREFIX)) {
+        if (deviceIdentifier.contains(",")) {
+            for (String tempIdentifier : deviceIdentifier.split(",")) {
+                relatedIdentifiers.add(tempIdentifier);
+                relatedIdentifiers.addAll(deviceAgentManagementService.queryGroupByDevice(deviceIdentifier));
+            }
+        } else if (deviceIdentifier.startsWith(Const.DeviceGroup.GROUP_NAME_PREFIX)) {
             relatedIdentifiers.addAll(deviceAgentManagementService.queryDeviceByGroup(deviceIdentifier));
         } else {
             relatedIdentifiers.addAll(deviceAgentManagementService.queryGroupByDevice(deviceIdentifier));
@@ -58,6 +72,8 @@ public class TestTaskService {
             while (!taskQueueCopy.isEmpty()) {
                 TestTaskSpec temp = taskQueueCopy.poll();
                 if (relatedIdentifiers.contains(temp.deviceIdentifier)) {
+                    logger.warn("Device " + deviceIdentifier + " is not free, as precedent queued task " + temp.testTaskId + " will occupy this deviceIdentifier as " +
+                            temp.deviceIdentifier);
                     return false;
                 }
             }
@@ -67,30 +83,37 @@ public class TestTaskService {
 
     @Scheduled(cron = "0 */3 * * * *")
     public void runTask() {
+        logger.info("Start to run queued test task. the value of isRunning is: " + isRunning.get() + "the size of taskQueue is: " + taskQueue.size());
         //only run one task at the same time
         if (isRunning.get()) {
             return;
         }
         isRunning.set(true);
-        while (!taskQueue.isEmpty()) {
-            TestTaskSpec testTaskSpec = taskQueue.peek();
-            TestTask testTask = TestTask.convertToTestTask(testTaskSpec);
-            try {
-                JSONObject result = deviceAgentManagementService.runTestTaskBySpec(testTaskSpec);
-                if (result.get(Const.Param.TEST_DEVICE_SN) == null) {
-                    break;
-                } else {
-                    testTask.setTestDevicesCount(result.getString(Const.Param.TEST_DEVICE_SN).split(",").length);
+        synchronized (taskQueue) {
+            Iterator<TestTaskSpec> queueIterator = taskQueue.iterator();
+            while (queueIterator.hasNext()) {
+                TestTaskSpec testTaskSpec = queueIterator.next();
+                TestTask testTask = TestTask.convertToTestTask(testTaskSpec);
+                try {
+                    logger.info("Start trying to trigger queued test task: " + testTaskSpec.testTaskId + ", target deviceIdentifier: " + testTaskSpec.deviceIdentifier);
+                    JSONObject result = deviceAgentManagementService.runTestTaskBySpec(testTaskSpec);
+                    String runningDeviceIdentifier = result.getString(Const.Param.TEST_DEVICE_SN);
+                    if (runningDeviceIdentifier == null) {
+                        logger.warn("Trigger test task: " + testTaskSpec.testTaskId + " failed.");
+                    } else {
+                        logger.info("Trigger test task: " + testTaskSpec.testTaskId + " successfully on device: " + runningDeviceIdentifier);
+                        testTask.setTestDevicesCount(runningDeviceIdentifier.split(",").length);
+                        testDataService.saveTestTaskData(testTask);
+                        queueIterator.remove();
+                    }
+                } catch (Exception e) {
+                    logger.error(e.getMessage(), e);
+                    //the task will be saved in memory if taskSpec is error
+                    testTask.setStatus(TestTask.TestStatus.EXCEPTION);
+                    testTask.setTestErrorMsg(e.getMessage());
                     testDataService.saveTestTaskData(testTask);
-                    taskQueue.poll();
+                    queueIterator.remove();
                 }
-            } catch (Exception e) {
-                logger.error(e.getMessage(), e);
-                //the task will be saved in memory if taskSpec is error
-                testTask.setStatus(TestTask.TestStatus.EXCEPTION);
-                testTask.setTestErrorMsg(e.getMessage());
-                testDataService.saveTestTaskData(testTask);
-                taskQueue.poll();
             }
         }
         isRunning.set(false);
@@ -143,12 +166,9 @@ public class TestTaskService {
     public void checkTestTaskTeamConsistency(TestTaskSpec testTaskSpec) throws HydraLabRuntimeException {
         if (TestTask.TestRunningType.APPIUM_CROSS.equals(testTaskSpec.runningType)
                 || TestTask.TestRunningType.T2C_JSON_TEST.equals(testTaskSpec.runningType)) {
-            AgentUser agent = agentManageService.getAgent(testTaskSpec.deviceIdentifier);
-            if (agent == null) {
-                throw new HydraLabRuntimeException(HttpStatus.BAD_REQUEST.value(), "Didn't find AgentUser with given deviceIdentifier!");
-            }
-            if (!testTaskSpec.teamId.equals(agent.getTeamId())) {
-                throw new HydraLabRuntimeException(HttpStatus.BAD_REQUEST.value(), "AgentUser doesn't belong to the given team in spec!");
+            String[] identifiers = testTaskSpec.deviceIdentifier.split(",");
+            for (String identifier : identifiers) {
+                checkDeviceTeamConsistency(identifier, testTaskSpec.teamId, testTaskSpec.accessKey);
             }
         } else {
             String deviceIdentifier = testTaskSpec.deviceIdentifier;
@@ -165,23 +185,27 @@ public class TestTaskService {
                 }
                 deviceAgentManagementService.checkAccessInfo(deviceIdentifier, testTaskSpec.accessKey);
             } else {
-                DeviceInfo device = deviceAgentManagementService.getDevice(deviceIdentifier);
-                if (device == null) {
-                    throw new HydraLabRuntimeException(HttpStatus.BAD_REQUEST.value(), "Didn't find device with given deviceIdentifier!");
-                }
-                AgentUser agent = agentManageService.getAgent(device.getAgentId());
-                if (agent == null) {
-                    throw new HydraLabRuntimeException(HttpStatus.BAD_REQUEST.value(), "Didn't find AgentUser with given agent id!");
-                }
-                if (testTaskSpec.teamId.equals(agent.getTeamId())) {
-                    return;
-                }
-                if (!device.getIsPrivate()) {
-                    return;
-                }
-                deviceAgentManagementService.checkAccessInfo(deviceIdentifier, testTaskSpec.accessKey);
+                checkDeviceTeamConsistency(deviceIdentifier, testTaskSpec.teamId, testTaskSpec.accessKey);
             }
         }
+    }
+
+    private void checkDeviceTeamConsistency(String deviceIdentifier, String teamId, String accessKey) {
+        DeviceInfo device = deviceAgentManagementService.getDevice(deviceIdentifier);
+        if (device == null) {
+            throw new HydraLabRuntimeException(HttpStatus.BAD_REQUEST.value(), "Didn't find device with given deviceIdentifier!");
+        }
+        AgentUser agent = agentManageService.getAgent(device.getAgentId());
+        if (agent == null) {
+            throw new HydraLabRuntimeException(HttpStatus.BAD_REQUEST.value(), "Didn't find AgentUser with given agent id!");
+        }
+        if (agent.getTeamId().equals(teamId)) {
+            return;
+        }
+        if (!device.getIsPrivate()) {
+            return;
+        }
+        deviceAgentManagementService.checkAccessInfo(deviceIdentifier, accessKey);
     }
 
     public void updateTaskTeam(String teamId, String teamName) {

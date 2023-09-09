@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.t2c.runner;
 
 import com.alibaba.fastjson.JSON;
@@ -17,17 +18,34 @@ import io.appium.java_client.android.nativekey.AndroidKey;
 import org.jetbrains.annotations.NotNull;
 import org.openqa.selenium.WebElement;
 import org.slf4j.Logger;
+import org.w3c.dom.Document;
+import org.xml.sax.InputSource;
 
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.util.HashMap;
 import java.util.Map;
 
-public class T2CAppiumUtils {
+public final class T2CAppiumUtils {
     static HashMap<String, String> keyToInfoMap = new HashMap<>();
     private static boolean isSelfTesting = false;
 
+    private T2CAppiumUtils() {
+
+    }
+
     public static WebElement findElement(BaseDriverController driver, BaseElementInfo element, Logger logger) {
         WebElement elementFound = null;
-        if (element == null) return null;
+        if (element == null) {
+            return null;
+        }
         ElementFinder<BaseElementInfo> finder = ElementFinderFactory.createElementFinder(driver);
         elementFound = finder.findElement(element);
         if (elementFound != null) {
@@ -45,16 +63,39 @@ public class T2CAppiumUtils {
             e.printStackTrace();
             int index = actionInfo.getId();
             String description = actionInfo.getDescription();
-            logger.error("doAction at " + index + ", description: " + description + ", with exception: " + e.getMessage());
+            logger.error("doAction at " + index + ", description: " + description + ", page source: " + prettyPrintByTransformer(driver.getPageSource(), 2, false)
+                    + "\n, with exception: " + e.getMessage());
             if (!isOption) {
                 throw new IllegalStateException("Failed at " + index + ", description: " + description + ", " + e.getMessage()
-                        + ", page source: \n" + driver.getPageSource(), e);
+                        + ", page source: \n" + prettyPrintByTransformer(driver.getPageSource(), 2, false), e);
             }
         }
     }
 
+    private static String prettyPrintByTransformer(String xmlString, int indent, boolean ignoreDeclaration) {
+
+        try {
+            InputSource src = new InputSource(new StringReader(xmlString));
+            Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(src);
+
+            TransformerFactory transformerFactory = TransformerFactory.newInstance();
+            transformerFactory.setAttribute("indent-number", indent);
+            Transformer transformer = transformerFactory.newTransformer();
+            transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
+            transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, ignoreDeclaration ? "yes" : "no");
+            transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+
+            Writer out = new StringWriter();
+            transformer.transform(new DOMSource(document), new StreamResult(out));
+            return out.toString();
+        } catch (Exception e) {
+            return xmlString;
+        }
+    }
+
+    @SuppressWarnings("methodlength")
     public static void chooseActionType(BaseDriverController driver, ActionInfo actionInfo, Logger logger) {
-        String ActionType = actionInfo.getActionType();
+        String actionType = actionInfo.getActionType();
         BaseElementInfo element = actionInfo.getTestElement();
         WebElement webElement = findElement(driver, element, logger);
         Map<String, Object> arguments = actionInfo.getArguments();
@@ -62,7 +103,9 @@ public class T2CAppiumUtils {
         if (webElement == null && !isSelfTesting) {
             safeSleep(3000);
         }
-        switch (ActionType) {
+        logger.info("chooseActionType, action id: " + actionInfo.getId() + ", description: " + actionInfo.getDescription() + " on element: "  + webElement);
+        logger.info("chooseActionType, page source: \n" + prettyPrintByTransformer(driver.getPageSource(), 2, false));
+        switch (actionType) {
             case "click":
                 driver.click(webElement);
                 break;
@@ -94,14 +137,16 @@ public class T2CAppiumUtils {
             case "activateApp":
                 String appPackageName = (String) arguments.get("appPackageName");
                 if (appPackageName == null) {
-                    throw new IllegalArgumentException("App package name should not be null. Please add argument 'appPackageName' in the json. action index: " + actionInfo.getId());
+                    throw new IllegalArgumentException(
+                            "App package name should not be null. Please add argument 'appPackageName' in the json. action index: " + actionInfo.getId());
                 }
                 driver.activateApp(appPackageName);
                 break;
             case "terminateApp":
                 String removeAppPackageName = (String) arguments.get("appPackageName");
                 if (removeAppPackageName == null) {
-                    throw new IllegalArgumentException("App package name should not be null. Please add argument 'appPackageName' in the json. action index: " + actionInfo.getId());
+                    throw new IllegalArgumentException(
+                            "App package name should not be null. Please add argument 'appPackageName' in the json. action index: " + actionInfo.getId());
                 }
                 driver.terminateApp(removeAppPackageName);
                 break;
@@ -109,7 +154,7 @@ public class T2CAppiumUtils {
                 driver.pressKey(AndroidKey.BACK);
                 break;
             case "home":
-                driver.pressKey(AndroidKey.HOME);
+                driver.backToHome();
                 break;
             case "pressKeyCode":
                 String keyCode = arguments.get("keyCode") + "";
@@ -144,7 +189,8 @@ public class T2CAppiumUtils {
                 String attribute = (String) arguments.get("attribute");
                 String expectedValue = (String) arguments.get("expectedValue");
                 if (attribute == null || expectedValue == null) {
-                    throw new IllegalArgumentException("Assert info is not defined. Please add argument 'attribute' and 'expectedValue' in the json. action index: " + actionInfo.getId());
+                    throw new IllegalArgumentException(
+                            "Assert info is not defined. Please add argument 'attribute' and 'expectedValue' in the json. action index: " + actionInfo.getId());
                 }
                 driver.assertElementAttribute(webElement, attribute, expectedValue);
                 break;
@@ -184,7 +230,8 @@ public class T2CAppiumUtils {
                     WebElement toElement = findElement(driver, toElementInfo, logger);
                     driver.dragAndDrop(webElement, toElement);
                 } else {
-                    throw new IllegalArgumentException("Destination is not defined. Please add argument 'xVector' & 'yVector' or 'toElement' in the json. action index: " + actionInfo.getId());
+                    throw new IllegalArgumentException(
+                            "Destination is not defined. Please add argument 'xVector' & 'yVector' or 'toElement' in the json. action index: " + actionInfo.getId());
                 }
                 break;
             case "switchToUrl":
@@ -204,6 +251,18 @@ public class T2CAppiumUtils {
             case "setClipboard":
                 String clipboardText = (String) arguments.get("text");
                 driver.setClipboard(clipboardText);
+                break;
+            case ActionInfo.ACTION_TYPE_INSPECT_BATTERY_USAGE:
+                String targetApp = (String) arguments.get("targetApp");
+                String description = (String) arguments.get("description");
+                boolean isReset = (Boolean) arguments.getOrDefault("isReset", false);
+                driver.inspectBatteryUsage(targetApp, description, isReset);
+                break;
+            case ActionInfo.ACTION_TYPE_INSPECT_MEM_USAGE:
+                targetApp = (String) arguments.get("targetApp");
+                description = (String) arguments.get("description");
+                isReset = (Boolean) arguments.getOrDefault("isReset", false);
+                driver.inspectMemoryUsage(targetApp, description, isReset);
                 break;
             default:
                 throw new IllegalStateException("action fail" +

@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.center.service;
 
 import com.microsoft.hydralab.center.repository.AgentUserRepository;
 import com.microsoft.hydralab.center.util.CenterConstant;
 import com.microsoft.hydralab.center.util.SecretGenerator;
-import com.microsoft.hydralab.common.entity.common.AgentUser;
 import com.microsoft.hydralab.common.entity.center.SysUser;
+import com.microsoft.hydralab.common.entity.common.AgentUser;
 import com.microsoft.hydralab.common.entity.common.CriteriaType;
 import com.microsoft.hydralab.common.util.CriteriaTypeUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +36,6 @@ public class AgentManageService {
         agentUserInfo.setMailAddress(mailAddress);
         agentUserInfo.setOs(os);
         agentUserInfo.setName(name);
-        agentUserInfo.setDeviceType(AgentUser.DeviceType.ANDROID);
         agentUserInfo.setTeamId(teamId);
         agentUserInfo.setTeamName(teamName);
 
@@ -125,11 +125,11 @@ public class AgentManageService {
         return userTeamManagementService.checkRequestorTeamAdmin(requestor, agentUser.getTeamId());
     }
 
-    public void updateAgentTeam(String teamId, String teamName){
-         List<AgentUser> agents = getAgentsByTeamId(teamId);
-         agents.forEach(agent -> agent.setTeamName(teamName));
+    public void updateAgentTeam(String teamId, String teamName) {
+        List<AgentUser> agents = getAgentsByTeamId(teamId);
+        agents.forEach(agent -> agent.setTeamName(teamName));
 
-         agentUserRepository.saveAll(agents);
+        agentUserRepository.saveAll(agents);
     }
 
     public File generateAgentConfigFile(String agentId, String host) {
@@ -153,12 +153,19 @@ public class AgentManageService {
                         "  registry:\n" +
                         "    # The server hostname:port of Hydra Lab Center. If nginx enabled, switch to port of nginx\n" +
                         "    server: '" + host + "'\n" +
-                        "    # The Agent info registered in Hydra Lab Center, for instance if it's running on localhost, the URL would be: http://localhost:9886/portal/index.html#/auth\n" +
+                        "    # The Agent info registered in Hydra Lab Center, for instance if it's running on localhost," +
+                        "    the URL would be: http://localhost:9886/portal/index.html#/auth\n" +
                         "    name: " + agentUser.getName() + "\n" +
                         "    id: " + agentUser.getId() + "\n" +
                         "    secret: " + agentUser.getSecret() + "\n" +
-                        "    # Agent Type {1 : 1*WINDOWS + n*ANDROIDS , 2 : 1*WINDOWS+1*ANDROID , 3 : iOS}\n" +
-                        "    agent-type: 1");
+                        "  device:\n" +
+                        "    monitor:\n" +
+                        "      windows:\n" +
+                        "        enabled: false\n" +
+                        "      android:\n" +
+                        "        enabled: true\n" +
+                        "      ios:\n" +
+                        "        enabled: false");
                 fileWriter.flush();
                 fileWriter.close();
 

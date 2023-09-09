@@ -11,7 +11,14 @@ import org.apache.commons.io.IOUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStreamWriter;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,7 +32,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class FileUtil {
-    private final static SimpleDateFormat format = new SimpleDateFormat("yyyy" + File.separator + "MM" + File.separator + "dd");
+    private final static SimpleDateFormat format = new SimpleDateFormat("yyyy/MM/dd");
     private static final Pattern paramKeyMatch = Pattern.compile("\\$\\{(\\w+)}");
 
     public static String UTF_8 = "UTF-8";
@@ -224,5 +231,13 @@ public class FileUtil {
         }
         fis.close();
         bis.close();
+    }
+
+    public static void copyFile(String sourcePath, String targetPath) {
+        cn.hutool.core.io.FileUtil.copyFile(sourcePath, targetPath);
+    }
+
+    public static File copyFileToFolder(File sourceFile, File targetFolder) {
+        return cn.hutool.core.io.FileUtil.copy(sourceFile, targetFolder, true);
     }
 }

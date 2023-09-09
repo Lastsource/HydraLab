@@ -1,35 +1,71 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
 android {
-    compileSdkVersion 28
+    namespace 'com.microsoft.hydralab.android.client'
+
+    compileSdkVersion 33
+
+    signingConfigs {
+        debugSignConfig {
+            keyAlias 'hydralab'
+            keyPassword 'hydralab'
+            storeFile file('../keystore.jks')
+            storePassword 'hydralab'
+        }
+    }
 
     defaultConfig {
         applicationId "com.microsoft.hydralab.android.client"
         minSdkVersion 21
-        targetSdkVersion 28
-        versionCode 17
-        versionName '2.6.0'
+        //noinspection ExpiredTargetSdkVersion
+        targetSdkVersion 29
+        versionCode rootProject.ext.clientVersionCode
+        versionName rootProject.ext.clientVersionNumber
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+
     buildTypes {
         debug {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.debugSignConfig
             minifyEnabled false
         }
 
         release {
-            signingConfig signingConfigs.debug
-            minifyEnabled true
-            shrinkResources true
+            signingConfig signingConfigs.debugSignConfig
+            minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.4.0'
+    }
+
+    lint {
+        xmlReport true
+        abortOnError false
     }
 }
 
 dependencies {
+    implementation 'androidx.core:core-ktx:1.10.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+    implementation 'androidx.annotation:annotation-jvm:1.6.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.2.0'
+    androidTestImplementation 'androidx.test:runner:1.4.0'
+    androidTestImplementation 'androidx.test:rules:1.4.0'
     def appCenterSdkVersion = '4.4.4'
     implementation "com.microsoft.appcenter:appcenter-analytics:${appCenterSdkVersion}"
     implementation "com.microsoft.appcenter:appcenter-crashes:${appCenterSdkVersion}"

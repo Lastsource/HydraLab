@@ -1,14 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.t2c.runner;
 
 import com.microsoft.hydralab.t2c.runner.elements.BaseElementInfo;
+import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 
 public class ActionInfo {
+    static final String ACTION_TYPE_INSPECT_MEM_USAGE = "inspectMemoryUsage";
+    static final String ACTION_TYPE_INSPECT_BATTERY_USAGE = "inspectBatteryUsage";
     private final Integer id;
     private final BaseElementInfo testElement;
     private final String actionType;
@@ -38,7 +42,6 @@ public class ActionInfo {
         return id;
     }
 
-
     public String getDescription() {
         return description;
     }
@@ -60,7 +63,15 @@ public class ActionInfo {
     }
 
     public boolean isOptional() {
-        return isOptional;
+        // Labeled all the performance related action
+        return isOptional
+                || ACTION_TYPE_INSPECT_MEM_USAGE.equalsIgnoreCase(actionType)
+                || ACTION_TYPE_INSPECT_BATTERY_USAGE.equalsIgnoreCase(actionType);
+    }
+
+    @Override
+    public String toString() {
+        return ToStringBuilder.reflectionToString(this);
     }
 }
 

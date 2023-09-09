@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 package com.microsoft.hydralab.common.screen;
 
-import com.microsoft.hydralab.common.util.Const;
 import com.microsoft.hydralab.common.entity.common.DeviceInfo;
-import com.microsoft.hydralab.common.management.DeviceManager;
+import com.microsoft.hydralab.common.management.device.DeviceDriver;
+import com.microsoft.hydralab.common.util.Const;
+import com.microsoft.hydralab.common.util.FlowUtil;
 import com.microsoft.hydralab.common.util.ThreadUtils;
 import io.appium.java_client.ios.IOSStartScreenRecordingOptions;
 
@@ -18,22 +19,25 @@ import java.util.Base64;
 
 public class IOSAppiumScreenRecorderForMac extends IOSAppiumScreenRecorder {
 
-    public IOSAppiumScreenRecorderForMac(DeviceManager deviceManager, DeviceInfo info, String recordDir) {
-        super(deviceManager, info, recordDir);
+    public IOSAppiumScreenRecorderForMac(DeviceDriver deviceDriver, DeviceInfo info, String recordDir) {
+        super(deviceDriver, info, recordDir);
     }
 
     @Override
     public void startRecord(int maxTimeInSecond) {
         int timeout = maxTimeInSecond > 0 ? maxTimeInSecond : DEFAULT_TIMEOUT_IN_SECOND;
         try {
-            iosDriver.startRecordingScreen(new IOSStartScreenRecordingOptions()
-                    .enableForcedRestart()
-                    .withFps(24)
-                    .withVideoType("h264")
-                    .withVideoScale("720:360")
-                    .withTimeLimit(Duration.ofSeconds(timeout)));
+            FlowUtil.retryAndSleepWhenFalse(3, 1000, () -> {
+                iosDriver.startRecordingScreen(new IOSStartScreenRecordingOptions()
+                        .enableForcedRestart()
+                        .withFps(24)
+                        .withVideoType("h264")
+                        .withVideoScale("720:360")
+                        .withTimeLimit(Duration.ofSeconds(timeout)));
+                return true;
+            });
             isStarted = true;
-        } catch (Throwable e) {
+        } catch (Exception e) {
             System.out.println("-------------------------------Fail to Start recording, Ignore it to unblocking the following tests----------------------------");
             e.printStackTrace();
             System.out.println("-------------------------------------------------------Ignore End--------------------------------------------------------------");
@@ -41,9 +45,9 @@ public class IOSAppiumScreenRecorderForMac extends IOSAppiumScreenRecorder {
     }
 
     @Override
-    public boolean finishRecording() {
+    public String finishRecording() {
         if (!isStarted) {
-            return false;
+            return null;
         }
         SimpleDateFormat format = new SimpleDateFormat(
                 "yyyy-MM-dd-HH-mm-ss");
@@ -61,8 +65,8 @@ public class IOSAppiumScreenRecorderForMac extends IOSAppiumScreenRecorder {
             System.out.println("-------------------------------Fail to Stop recording, Ignore it to unblocking the following tests-----------------------------");
             e.printStackTrace();
             System.out.println("-------------------------------------------------------Ignore End--------------------------------------------------------------");
-            return false;
+            return null;
         }
-        return true;
+        return destPath;
     }
 }

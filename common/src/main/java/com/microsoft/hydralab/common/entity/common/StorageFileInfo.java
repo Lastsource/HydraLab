@@ -21,9 +21,12 @@ public class StorageFileInfo implements Serializable {
     private String fileId;
     private String fileType;
     private String fileName;
+
     private String blobUrl;
-    private String blobPath;
     private String blobContainer;
+    // relative to blobContainer
+    private String blobPath;
+
     private long fileLen;
     private String md5;
     private String loadDir;
@@ -32,22 +35,41 @@ public class StorageFileInfo implements Serializable {
     private JSONObject fileParser;
     private Date createTime;
     private Date updateTime;
+    // CDN download URL (absolute path)
     private String CDNUrl;
 
 
     public StorageFileInfo() {
 
     }
-    public StorageFileInfo(File file, String relativePath, String fileType, String loadType, String loadDir){
-        this(file, relativePath, fileType);
+    public StorageFileInfo(File file, String relativeParent, String fileType, String loadType, String loadDir){
+        this(file, relativeParent, fileType);
         this.loadType = loadType;
         this.loadDir = loadDir;
     }
-    public StorageFileInfo(File file, String relativePath, String fileType) {
+    public StorageFileInfo(File file, String relativeParent, String fileType) {
         this.fileType = fileType;
         this.fileName = file.getName();
         this.fileLen = file.length();
-        this.blobPath = relativePath + "/" + file.getName();
+        this.blobPath = relativeParent + "/" + file.getName();
+
+        try {
+            FileInputStream inputStream = new FileInputStream(file);
+            this.setMd5(DigestUtils.md5DigestAsHex(inputStream));
+            inputStream.close();
+        } catch (FileNotFoundException e) {
+            throw new HydraLabRuntimeException(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Generate temp file failed!", e);
+        } catch (IOException e) {
+            throw new HydraLabRuntimeException(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Get the MD5 of temp file failed!", e);
+        }
+    }
+
+    public StorageFileInfo(File file, String fileRelPath, String fileType, EntityType entityType) {
+        this.fileType = fileType;
+        this.fileName = file.getName();
+        this.fileLen = file.length();
+        this.blobPath = fileRelPath;
+        this.blobContainer = entityType.storageContainer;
 
         try {
             FileInputStream inputStream = new FileInputStream(file);
@@ -67,6 +89,7 @@ public class StorageFileInfo implements Serializable {
         String APP_FILE = "APP";
         String TEST_APP_FILE = "TEST_APP";
         String T2C_JSON_FILE = "T2C_JSON";
+        String SCREENSHOT = "SCREENSHOT";
 
     }
 

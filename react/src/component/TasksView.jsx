@@ -39,6 +39,8 @@ import Checkbox from '@mui/material/Checkbox';
 import ListItemText from '@mui/material/ListItemText';
 import TextField from "@mui/material/TextField";
 import {ThemeProvider} from '@mui/material/styles';
+import IconButton from '@mui/material/IconButton';
+import copy from 'copy-to-clipboard';
 
 const pieCOLORS = ['#00C49F', '#FF8042', '#808080'];
 const taskRowHeight = 35
@@ -52,12 +54,15 @@ const TestType = {
     "APPIUM_MONKEY": "Appium Monkey",
     "APPIUM_CROSS": "Appium E2E",
     "T2C_JSON": "JSON-Described Test",
+    "XCTEST": "XCTest",
+    "MAESTRO":"Maestro",
+    "PYTHON": "Python",
     "All": "All"
 }
 
 let params = {
     Timestamp: ["Last 24 Hours", "Last 7 Days", "Last 30 Days", "All"],
-    TestType: ["INSTRUMENTATION", "APPIUM", "SMART", "MONKEY", "APPIUM_MONKEY", "APPIUM_CROSS", "T2C_JSON"],
+    TestType: ["INSTRUMENTATION", "APPIUM", "SMART", "MONKEY", "APPIUM_MONKEY", "APPIUM_CROSS", "T2C_JSON", "XCTEST", "MAESTRO", "PYTHON"],
     Result: ["Passed", "Failed"],
     TriggerType: ["PullRequest", "IndividualCI", "API"]
 };
@@ -65,7 +70,7 @@ let params = {
 let defaultSelectedParams = {
     time: "Last 24 Hours",
     suite: '',
-    TestType: ["INSTRUMENTATION", "APPIUM", "SMART", "MONKEY", "APPIUM_MONKEY", "APPIUM_CROSS", "T2C_JSON"],
+    TestType: ["INSTRUMENTATION", "APPIUM", "SMART", "MONKEY", "APPIUM_MONKEY", "APPIUM_CROSS", "T2C_JSON", "XCTEST", "MAESTRO", "PYTHON"],
     Result: ["Passed", "Failed"],
     TriggerType: ["PullRequest", "IndividualCI", "API"]
 }
@@ -141,11 +146,11 @@ class TasksView extends BaseView {
                 <StyledTableCell key={'Timestamp'} align="center">
                     <ThemeProvider theme={darkTheme}>
                         <FormControl className="ml-0" fullWidth={true}>
-                            <InputLabel id="end-time-range-select-label">End Time Range</InputLabel>
+                            <InputLabel id="start-time-range-select-label">Start Time Range</InputLabel>
                             <Select
-                                labelId="end-time-range-select-label"
-                                id="end-time-range-select"
-                                label="End Time Range"
+                                labelId="start-time-range-select-label"
+                                id="start-time-range-select"
+                                label="Start Time Range"
                                 size="small"
                                 value={selectedParams.time}
                                 onChange={this.selectTimeChange}
@@ -318,12 +323,11 @@ class TasksView extends BaseView {
                 </Table>
             </TableContainer>
             <Dialog open={this.state.openTestDetail}
-                fullWidth
-                maxWidth="lg"
-                onClose={() => this.handleCloseDetailDialog()}>
-                <DialogContent>
-                    <TestReportView testTask={this.state.testDetailInfo} />
-                </DialogContent>
+                    fullWidth
+                    maxWidth="lg"
+                    onClose={() => this.handleCloseDetailDialog()}
+            >
+                <TestReportView testTask={this.state.testDetailInfo} />
                 <DialogActions>
                     <Button
                         onClick={() => this.handleCloseDetailDialog()}>Close</Button>
@@ -522,8 +526,11 @@ class TasksView extends BaseView {
                 <TableCell id={task.id} align="center">
                     {moment(task.startDate).format('yyyy-MM-DD HH:mm:ss') + ' - ' + moment(task.endDate).format('HH:mm:ss')}
                 </TableCell>
-                <TableCell id={task.id} align="center">
-                    {task.testSuite}
+                <TableCell id={task.id} align="center" style={{maxWidth: '400px'}}>
+                    {task.testSuite.length > 100 ? task.testSuite.substring(0, 100) + '...' : task.testSuite}
+                    <IconButton onClick={() => this.copyContent(task.testSuite)}>
+                            <span className="material-icons-outlined">content_copy</span>
+                    </IconButton>
                 </TableCell>
                 <TableCell id={task.id} align="center">
                     {this.getTestType(task)}
@@ -574,7 +581,14 @@ class TasksView extends BaseView {
             </StyledTableRow>
     }
 
-
+    copyContent(testSuite) {
+        copy(testSuite)
+        this.setState({
+            snackbarIsShown: true,
+            snackbarSeverity: "success",
+            snackbarMessage: "suiteName copied!"
+        })
+    }
     taskRowClicked = (element, task) => {
         if (this.state.loading) {
             return
@@ -665,26 +679,7 @@ class TasksView extends BaseView {
         this.handleStatus("openTestDetail", false)
     }
 
-    queryTask() {
-        console.log(this.state.selectedParams)
-        let queryParams = [
-            {
-                "key": "status",
-                "op": "ne",
-                "value": "running"
-            },
-            {
-                "key": "runningType",
-                "op": "in",
-                "value": this.state.selectedParams.TestType.length > 0 ? this.state.selectedParams.TestType : params.TestType
-            },
-            {
-                "key": "type",
-                "op": "in",
-                "value": this.state.selectedParams.TriggerType
-            }
-        ]
-
+    taskParamUpdate(queryParams) {
         if (this.state.selectedParams.suite !== '') {
             queryParams.push({
                 "key": "testSuite",
@@ -733,6 +728,29 @@ class TasksView extends BaseView {
                 "dateFormatString": "yyyy-MM-dd HH:mm:ss.S"
             })
         }
+    }
+
+    queryTask() {
+        console.log(this.state.selectedParams)
+        // completed tasks
+        let queryParams = [
+            {
+                "key": "status",
+                "op": "ne",
+                "value": "running"
+            },
+            {
+                "key": "runningType",
+                "op": "in",
+                "value": this.state.selectedParams.TestType.length > 0 ? this.state.selectedParams.TestType : params.TestType
+            },
+            {
+                "key": "type",
+                "op": "in",
+                "value": this.state.selectedParams.TriggerType
+            }
+        ]
+        this.taskParamUpdate(queryParams)
 
         let postBody = {
             'page': this.state.page - 1,
@@ -748,18 +766,9 @@ class TasksView extends BaseView {
             })
 
         }, postBody, null, null, null)
-    }
-
-    componentDidMount() {
-        console.log(this.props)
-        this.setState({
-            hideSkeleton: false,
-        })
-
-        this.queryTask()
 
         if (this.state.page === 1) {
-
+            // queued tasks
             axios.get('/api/test/task/queue').then(res => {
                 if (res.data && res.data.code === 200) {
                     if (res.data.content) {
@@ -772,14 +781,27 @@ class TasksView extends BaseView {
                     this.snackBarFail(res)
                 }
             }).catch(this.snackBarError)
-            
+
+            // running tasks
             let queryParams = [
                 {
                     "key": "status",
                     "op": "equal",
                     "value": "running"
+                },
+                {
+                    "key": "runningType",
+                    "op": "in",
+                    "value": this.state.selectedParams.TestType.length > 0 ? this.state.selectedParams.TestType : params.TestType
+                },
+                {
+                    "key": "type",
+                    "op": "in",
+                    "value": this.state.selectedParams.TriggerType
                 }
             ]
+            this.taskParamUpdate(queryParams)
+
             let postBody = {
                 'page': 0,
                 'pageSize': -1,
@@ -788,12 +810,21 @@ class TasksView extends BaseView {
 
             this.axiosPost(`/api/test/task/list`, (content) => {
                 this.setState({
-                    runningTasks: content.content,
+                    runningTasks: content.content.reverse(),
                     hideSkeleton: true,
                 })
 
             }, postBody, null, null, null)
         }
+    }
+
+    componentDidMount() {
+        console.log(this.props)
+        this.setState({
+            hideSkeleton: false,
+        })
+
+        this.queryTask()
     }
 
     componentWillUnmount() {

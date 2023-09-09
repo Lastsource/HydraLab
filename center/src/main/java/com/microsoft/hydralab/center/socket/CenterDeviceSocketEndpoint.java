@@ -1,16 +1,24 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.center.socket;
 
 import com.microsoft.hydralab.center.config.SpringApplicationListener;
 import com.microsoft.hydralab.center.service.DeviceAgentManagementService;
+import com.microsoft.hydralab.common.entity.common.Message;
 import com.microsoft.hydralab.common.util.SerializeUtil;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
-import javax.websocket.*;
+import javax.websocket.CloseReason;
+import javax.websocket.OnClose;
+import javax.websocket.OnError;
+import javax.websocket.OnMessage;
+import javax.websocket.OnOpen;
+import javax.websocket.Session;
 import javax.websocket.server.ServerEndpoint;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 
@@ -41,7 +49,22 @@ public class CenterDeviceSocketEndpoint {
 
     @OnMessage
     public void onMessage(ByteBuffer message, Session session) {
-        deviceAgentManagementService.onMessage(SerializeUtil.byteArrToMessage(message.array()), session);
+        Message formattedMessage;
+        try {
+            formattedMessage = SerializeUtil.byteArrToMessage(message.array());
+        } catch (Exception e) {
+            try {
+                session.close(new CloseReason(CloseReason.CloseCodes.CANNOT_ACCEPT, "Message format error"));
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+            throw new RuntimeException(e);
+        }
+        try {
+            deviceAgentManagementService.onMessage(formattedMessage, session);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @OnError

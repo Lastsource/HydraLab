@@ -7,7 +7,11 @@ import com.microsoft.hydralab.common.entity.common.DeviceInfo;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 
 public class ShellUtils {
     public static final String POWER_SHELL_PATH = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
@@ -15,8 +19,8 @@ public class ShellUtils {
 
     private static String[] getFullCommand(String command)
     {
-        String shellProcess = "";
-        String args = "";
+        String shellProcess;
+        String args;
 
         if (isConnectedToWindowsOS) {
             // Add execution policy to ensure powershell can run on most of Windows devices
@@ -28,6 +32,25 @@ public class ShellUtils {
         }
 
         return new String[]{shellProcess, args, command};
+    }
+
+    private static String[] getFullCommand(String command, String redirectOutputFullPath)
+    {
+        String shellProcess;
+        String args;
+        String newCommand;
+        if (isConnectedToWindowsOS) {
+            // Add execution policy to ensure powershell can run on most of Windows devices
+            shellProcess = POWER_SHELL_PATH;
+            args = "powershell -ExecutionPolicy Unrestricted -NoProfile -Command";
+            newCommand = command + " | Out-File -FilePath " + redirectOutputFullPath + " -encoding utf8";
+        } else {
+            shellProcess = "sh";
+            args = "-c";
+            newCommand = command + " > " + redirectOutputFullPath + " 2>&1";
+        }
+
+        return new String[]{shellProcess, args, newCommand};
     }
 
     @Nullable
@@ -60,7 +83,7 @@ public class ShellUtils {
     @Nullable
     public static Process execLocalCommandWithRedirect(String command, File redirectTo, boolean needWait, Logger classLogger) {
         Process process = null;
-        String[] fullCommand = getFullCommand(command + " | Out-File -FilePath " + redirectTo.getAbsolutePath());
+        String[] fullCommand = getFullCommand(command, redirectTo.getAbsolutePath());
 
         try {
             process = Runtime.getRuntime().exec(fullCommand);
@@ -135,11 +158,14 @@ public class ShellUtils {
 
     public static String parseHydraLabVariable(String command, ITestRun testRun, DeviceInfo deviceInfo) {
         //  Available Hydra Lab Variables In Script:
+        //  $HydraLab_AttachmentFolderPath: The full path of the attachment folder
         //  $HydraLab_TestResultFolderPath: The full path of the test result folder
         //  $HydraLab_deviceUdid: The UDID of mobile device. (For Android, it will be equal to the serial number)
         String outPathOnAgent = testRun.getResultFolder().getAbsolutePath() + "/";
+        String attachmentPath = testRun.getResultFolder().getParent() + "/";
         String udid = deviceInfo.getSerialNum();
-        String newCommand = command.replace("$HydraLab_TestResultFolderPath", outPathOnAgent);
+        String newCommand = command.replace("$HydraLab_AttachmentFolderPath", attachmentPath);
+        command.replace("$HydraLab_TestResultFolderPath", outPathOnAgent);
         newCommand = newCommand.replace("$HydraLab_deviceUdid", udid);
         return newCommand;
     }

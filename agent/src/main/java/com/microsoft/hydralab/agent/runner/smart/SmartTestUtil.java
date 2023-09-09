@@ -5,9 +5,9 @@ package com.microsoft.hydralab.agent.runner.smart;
 
 import com.alibaba.fastjson.JSONObject;
 import com.microsoft.hydralab.common.entity.agent.SmartTestParam;
-import com.microsoft.hydralab.common.util.CommandOutputReceiver;
 import com.microsoft.hydralab.common.util.Const;
 import com.microsoft.hydralab.common.util.FileUtil;
+import com.microsoft.hydralab.common.util.PythonUtil;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
@@ -30,7 +30,7 @@ public class SmartTestUtil {
     public SmartTestUtil(String location) {
         File testBaseDir = new File(location);
         String name = Const.SmartTestConfig.ZIP_FILE_NAME;
-        String folderName = Const.SmartTestConfig.ZIP_FOLDER_NAME;
+        String folderName = Const.SmartTestConfig.RESULT_FOLDER_NAME;
 
         folderPath = testBaseDir.getAbsolutePath() + "/" + Const.SmartTestConfig.ZIP_FOLDER_NAME + "/";
         stringFolderPath = testBaseDir.getAbsolutePath() + "/" + Const.SmartTestConfig.STRING_FOLDER_NAME
@@ -61,23 +61,15 @@ public class SmartTestUtil {
         }
         initStringPool();
         filePath = folderPath + Const.SmartTestConfig.PY_FILE_NAME;
-        String requireFilePath = folderPath + Const.SmartTestConfig.REQUIRE_FILE_NAME;
-        String[] command = new String[]{"pip3", "install", "-r", requireFilePath};
-        try {
-            Process proc = Runtime.getRuntime().exec(command);
-            CommandOutputReceiver err = new CommandOutputReceiver(proc.getErrorStream(), log);
-            CommandOutputReceiver out = new CommandOutputReceiver(proc.getInputStream(), log);
-            err.start();
-            out.start();
-            proc.waitFor();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        File requireFile = new File(folderPath + Const.SmartTestConfig.REQUIRE_FILE_NAME);
+        PythonUtil.installRequirements(requireFile, log);
     }
 
     public String runPYFunction(SmartTestParam smartTestParam, Logger logger) throws Exception {
+        File smartTestFolder = new File(smartTestParam.getOutputFolder(), Const.SmartTestConfig.RESULT_FOLDER_NAME);
+        smartTestFolder.mkdir();
         String res = null;
-        String[] runArgs = new String[7];
+        String[] runArgs = new String[9];
         runArgs[0] = "python";
         runArgs[1] = filePath;
         runArgs[2] = smartTestParam.apkPath;
@@ -85,6 +77,8 @@ public class SmartTestUtil {
         runArgs[4] = smartTestParam.modelInfo;
         runArgs[5] = smartTestParam.testSteps;
         runArgs[6] = smartTestParam.stringTextFolder;
+        runArgs[7] = smartTestFolder.getAbsolutePath();
+        runArgs[8] = smartTestParam.llmInfo;
 
         for (String tempArg : runArgs) {
             logger.info(tempArg);

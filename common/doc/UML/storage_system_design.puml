@@ -1,0 +1,73 @@
+@startuml
+
+interface AccessToken
+abstract class StorageProperties {
+getContainerName()
+}
+abstract class StorageServiceClient {
++updateAccessToken(AccessToken)
++generateAccessToken(String permissionType)
++isAccessTokenExpired(AccessToken)
++upload(File, StorageFileInfo)
++download(File, StorageFileInfo)
+}
+class StorageFileInfo
+
+class AzureBlobClientAdapter
+class AzureBlobProperty
+class SASData
+enum SASPermission {
+READ
+WRITE
++setExpiryTime(AzureBlobProperty)
+}
+
+class SomeStorageAdapter
+class SomeProperty
+class SomeToken {
+a specific object extends AccessToken of some storage service
+}
+enum SomePermission {
+READ
+WRITE
++setExpiryTime(SomeProperty)
+}
+
+note top of SomeStorageAdapter
+  The adapter class extends StorageServiceClient
+  for a new third-party storage service.
+end note
+
+note left of SomeProperty
+  The property class extends StorageProperties
+  for a new third-party storage service.
+end note
+
+note bottom of SomeToken
+  The token class extends AccessToken
+  for a new third-party storage service.
+end note
+
+note bottom of SomePermission
+  Some ENUM permission class containing specific
+  permission strings of a new third-party storage service.
+end note
+
+StorageServiceClient --> AccessToken
+StorageServiceClient -> StorageFileInfo
+
+StorageServiceClient <|-- AzureBlobClientAdapter
+AccessToken <|-- SASData
+SASPermission <-- SASData
+AzureBlobProperty <-- SASPermission
+AzureBlobProperty <-- AzureBlobClientAdapter
+StorageProperties <|-- AzureBlobProperty
+
+StorageServiceClient <|-- SomeStorageAdapter
+AccessToken <|-- SomeToken
+SomePermission <- SomeToken
+SomeProperty <-- SomePermission
+SomeProperty <-- SomeStorageAdapter
+StorageProperties <|-- SomeProperty
+
+@enduml

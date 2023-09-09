@@ -2,11 +2,15 @@ plugins {
     id 'java'
     id 'org.springframework.boot'
 }
+apply from: "${project.rootDir}/quality/checkstyle.gradle"
 group = 'com.microsoft.hydralab'
 version = hydraLabVersion
 
 sourceCompatibility = 11
 targetCompatibility = 11
+
+classes.finalizedBy checkstyleMain
+bootJar.dependsOn("checkstyleMain")
 
 repositories {
     mavenCentral()
@@ -23,9 +27,9 @@ tasks.withType(JavaCompile) {
 }
 
 dependencies {
-    testCompile 'org.mockito:mockito-core:3.12.4'
-    testCompile group: 'org.springframework.boot', name: 'spring-boot-starter-test', version: springBootWebVersion
-    testCompile 'me.paulschwarz:spring-dotenv:2.3.0'
+    testImplementation 'org.mockito:mockito-core:3.12.4'
+    testImplementation group: 'org.springframework.boot', name: 'spring-boot-starter-test', version: springBootWebVersion
+    testImplementation 'me.paulschwarz:spring-dotenv:2.3.0'
 
     compile project(":common")
     compile project(":taps_to_cases:runner")
@@ -48,9 +52,8 @@ dependencies {
 
     compile group: 'org.springframework.security', name: 'spring-security-oauth2-client', version: '5.2.2.RELEASE'
 
-    compile('io.springfox:springfox-swagger2:3.0.0')
-    compile('io.springfox:springfox-swagger-ui:3.0.0')
-    compile('io.springfox:springfox-boot-starter:3.0.0')
+    compile('org.springdoc:springdoc-openapi-core:1.1.49')
+    compile('org.springdoc:springdoc-openapi-ui:1.4.1')
 
     compile group: 'org.jsoup', name: 'jsoup', version: '1.10.1'
     compile group: 'org.yaml', name: 'snakeyaml', version: '1.25'

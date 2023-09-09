@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.common.util;
+
+import java.util.List;
 
 public interface Const {
     interface Path {
@@ -67,18 +70,31 @@ public interface Const {
 
         String ZIP_FILE_NAME = "SmartTest.zip";
         String ZIP_FOLDER_NAME = "SmartTest";
+        String RESULT_FOLDER_NAME = "smartTestResult";
+        String GRAPH_FILE_NAME = "directed_acyclic_graph.gexf";
         String PY_FILE_NAME = "main.py";
         String BERT_MODEL_NAME = "screenBert.pt";
         String TOPIC_MODEL_NAME = "topic.pt";
         String REQUIRE_FILE_NAME = "requirements.txt";
         String STRING_FOLDER_NAME = "SmartTestString";
         String STRING_FILE_NAMES = "strings,username,password";
+        String LLM_ENABLE = "enable_llm";
+        String LLM_DEPLOYMENT = "deployment_name";
+        String LLM_API_KEY = "openai_api_key";
+        String LLM_API_BASE = "openai_api_base";
+        String LLM_API_VERSION = "openai_api_version";
     }
 
-    interface ScreenRecoderConfig{
+    interface ScreenRecoderConfig {
         String DEFAULT_FILE_NAME = "merged_test.mp4";
         String PC_FILE_NAME = "PC_test.mp4";
         String PHONE_FILE_NAME = "PHONE_test.mp4";
+    }
+
+    interface NetworkMonitorConfig {
+        String AndroidDumpPath = "/Documents/dump.log";
+        String DumpPath = "/network_dump.log";
+        String ResultPath = "/network_result.log";
     }
 
     interface DeviceStability {
@@ -93,6 +109,7 @@ public interface Const {
         String INDEX_PATH = "/portal/index.html";
         String ANCHOR = "#";
         String REDIRECT_PARAM = "redirectUrl";
+        String SWAGGER_DOC_PATH = "/v3/api-docs";
     }
 
     interface RegexString {
@@ -105,11 +122,16 @@ public interface Const {
         String MAIL_ADDRESS = "\\w+([-+.]\\w+)*@\\w+([-.]\\w+)*\\.\\w+([-.]\\w+)*";
 
         //File path
-        String LINUX_PATH = "^(\\/[\\w-]+)+\\/?$";
-        String WINDOWS_PATH = "^([a-zA-Z]:)(\\\\[^/\\\\:*?\"<>|]+\\\\?)*$";
+        // There are almost no restrictions - apart from '/' and '\0', you're allowed to use anything. Hence the below is only an adoption for the most cases
+        String LINUX_ABSOLUTE_PATH = "^(\\/[^\\t\\f\\n\\r\\v]+)+\\/?$";
+        String WINDOWS_ABSOLUTE_PATH = "^([a-zA-Z]:)(\\\\[^/\\\\:*?\"<>|]+\\\\?)*$";
+        String STORAGE_FILE_REL_PATH = "^([^\\/\\\\:*?\"<>|]+\\/)+[^\\/\\\\:*?\"<>|;]+$";
 
         //Package name
         String PACKAGE_NAME = "\\w+([-.]\\w+)*\\.\\w+([-.]\\w+)*";
+
+        //Integer
+        String INTEGER = "^[0-9]*$";
     }
 
     interface PermissionType {
@@ -136,8 +158,52 @@ public interface Const {
         String AUTHORITY = "AUTHORITY";
     }
 
-    interface PreInstallPolicy{
+    interface PreInstallFailurePolicy {
         String SHUTDOWN = "SHUTDOWN";
         String IGNORE = "IGNORE";
+    }
+
+    interface FilePermission {
+        String WRITE = "WRITE";
+        String READ = "READ";
+    }
+
+    interface StorageType {
+        String LOCAL = "LOCAL";
+        String AZURE = "AZURE";
+    }
+
+    interface StoragePropertyBean {
+        String LOCAL = "localStorageProperty";
+        String AZURE = "azureBlobProperty";
+    }
+
+    interface XCTestConfig{
+        String XCTEST_ZIP_FOLDER_NAME = "Xctest";
+        String XCTEST_RESULT_FILE_NAME = "result.xcresult";
+    }
+
+    final class LocalStorageURL {
+        public static final String CENTER_LOCAL_STORAGE_UPLOAD = "/api/storage/local/upload";
+        public static final String CENTER_LOCAL_STORAGE_DOWNLOAD = "/api/storage/local/download";
+        public static final String CENTER_LOCAL_STORAGE_ROOT = "storage/local/";
+    }
+
+    final class LocalStorageConst {
+        public static final List<String> PATH_PREFIX_LIST = List.of(LocalStorageURL.CENTER_LOCAL_STORAGE_UPLOAD, LocalStorageURL.CENTER_LOCAL_STORAGE_DOWNLOAD);
+    }
+
+    interface TestDeviceTag {
+        String PRIMARY_PHONE = "PRIMARY_PHONE";
+        String SECONDARY_PHONE = "SECONDARY_PHONE";
+        String TERTIARY_PHONE = "TERTIARY_PHONE";
+        String PRIMARY_PC = "PRIMARY_PC";
+    }
+
+    interface OperatedDevice {
+        String AGENT = "Agent";
+        String WINDOWS = "Windows";
+        String ANDROID = "Android";
+        String IOS = "iOS";
     }
 }

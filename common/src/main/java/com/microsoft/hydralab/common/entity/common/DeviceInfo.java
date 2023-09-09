@@ -3,13 +3,18 @@
 package com.microsoft.hydralab.common.entity.common;
 
 import com.microsoft.hydralab.common.entity.agent.MobileDevice;
+import com.microsoft.hydralab.common.management.device.DeviceType;
 import com.microsoft.hydralab.common.management.listener.MobileDeviceState;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -36,6 +41,7 @@ public class DeviceInfo extends MobileDevice {
     private String deviceId;
     private String runningTaskId;
     private String runningTestName;
+    private String runningTaskPackageName;
     private String agentId;
     private Set<String> deviceGroup = new HashSet<>();
     private boolean supportScreenRecording = true;
@@ -43,6 +49,7 @@ public class DeviceInfo extends MobileDevice {
     private transient File screenshotImageFile;
     private transient File pcScreenshotImageFile;
     private transient boolean adbTimeout = false;
+    private String type;
 
     public void setStatus(String status) {
         this.status = status;
@@ -84,17 +91,20 @@ public class DeviceInfo extends MobileDevice {
         this.currentTask.put(Thread.currentThread(), testTask);
         this.status = DeviceInfo.TESTING;
         this.runningTaskId = testTask.getId();
+        this.runningTaskPackageName = testTask.getPkgName();
     }
 
     public void finishTask() {
         this.currentTask.remove(Thread.currentThread());
         this.status = DeviceInfo.ONLINE;
         this.runningTaskId = null;
+        this.runningTaskPackageName = null;
     }
 
     public void reset() {
         this.status = DeviceInfo.ONLINE;
         this.runningTaskId = null;
+        this.runningTaskPackageName = null;
         killAll();
     }
 

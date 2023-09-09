@@ -2,29 +2,33 @@
 // Licensed under the MIT License.
 package com.microsoft.hydralab.common.screen;
 
-import com.android.ddmlib.InstallException;
 import com.microsoft.hydralab.common.entity.common.DeviceInfo;
 import com.microsoft.hydralab.common.logger.MultiLineNoCancelLoggingReceiver;
-import com.microsoft.hydralab.common.management.DeviceManager;
+import com.microsoft.hydralab.common.management.device.DeviceDriver;
 import com.microsoft.hydralab.common.util.ADBOperateUtil;
 import com.microsoft.hydralab.common.util.Const;
 import com.microsoft.hydralab.common.util.FlowUtil;
+import com.microsoft.hydralab.common.util.HydraLabRuntimeException;
 import com.microsoft.hydralab.common.util.ThreadUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Objects;
 
 
 public class PhoneAppScreenRecorder implements ScreenRecorder {
-    public static final String recordPackageName = "com.microsoft.hydralab.android.client";
+    public static final String RECORD_PACKAGE_NAME = "com.microsoft.hydralab.android.client";
     private static File recordApk;
     protected final File baseFolder;
     protected final Logger logger;
     private final DeviceInfo deviceInfo;
-    private final DeviceManager deviceManager;
+    private final DeviceDriver deviceDriver;
     /* Send adb signal every 30s */
     public int preSleepSeconds = 30;
     protected String fileName = Const.ScreenRecoderConfig.DEFAULT_FILE_NAME;
@@ -32,8 +36,8 @@ public class PhoneAppScreenRecorder implements ScreenRecorder {
     ADBOperateUtil adbOperateUtil;
     private Thread keepAliveThread;
 
-    public PhoneAppScreenRecorder(DeviceManager deviceManager, ADBOperateUtil adbOperateUtil, DeviceInfo deviceInfo, File baseFolder, Logger logger) {
-        this.deviceManager = deviceManager;
+    public PhoneAppScreenRecorder(DeviceDriver deviceDriver, ADBOperateUtil adbOperateUtil, DeviceInfo deviceInfo, File baseFolder, Logger logger) {
+        this.deviceDriver = deviceDriver;
         this.adbOperateUtil = adbOperateUtil;
         this.deviceInfo = deviceInfo;
         this.baseFolder = baseFolder;
@@ -56,21 +60,19 @@ public class PhoneAppScreenRecorder implements ScreenRecorder {
 
     @Override
     public void setupDevice() {
-        if (!deviceManager.isAppInstalled(deviceInfo, recordPackageName, logger)) {
-            try {
-                deviceManager.wakeUpDevice(deviceInfo, logger);
-                deviceManager.uninstallApp(deviceInfo, recordPackageName, logger);
-                deviceManager.installApp(deviceInfo, recordApk.getAbsolutePath(), logger);
-                installRecorderServiceApp();
-
-                deviceManager.grantAllPackageNeededPermissions(deviceInfo, recordApk, recordPackageName, false, logger);
-                deviceManager.grantPermission(deviceInfo, recordPackageName, "android.permission.FOREGROUND_SERVICE", logger);
-                deviceManager.addToBatteryWhiteList(deviceInfo, recordPackageName, logger);
-            } catch (Exception e) {
-                logger.error(e.getMessage(), e);
-            }
+        if (!deviceDriver.isAppInstalled(deviceInfo, RECORD_PACKAGE_NAME, logger)) {
+            installRecorderServiceApp();
         }
-        FlowUtil.retryWhenFalse(3, () -> deviceManager.grantProjectionAndBatteryPermission(deviceInfo, recordPackageName, logger));
+        try {
+            deviceDriver.wakeUpDevice(deviceInfo, logger);
+            deviceDriver.unlockDevice(deviceInfo, logger);
+            deviceDriver.grantAllPackageNeededPermissions(deviceInfo, recordApk, RECORD_PACKAGE_NAME, false, logger);
+            deviceDriver.grantPermission(deviceInfo, RECORD_PACKAGE_NAME, "android.permission.FOREGROUND_SERVICE", logger);
+            deviceDriver.addToBatteryWhiteList(deviceInfo, RECORD_PACKAGE_NAME, logger);
+        } catch (Exception e) {
+            logger.error(e.getMessage(), e);
+        }
+        FlowUtil.retryWhenFalse(3, () -> deviceDriver.grantProjectionAndBatteryPermission(deviceInfo, RECORD_PACKAGE_NAME, logger));
     }
 
     @Override
@@ -100,12 +102,11 @@ public class PhoneAppScreenRecorder implements ScreenRecorder {
     }
 
     @Override
-    public boolean finishRecording() {
+    public String finishRecording() {
         logger.info("finishRecording :" + started);
         if (!started) {
-            return false;
+            return null;
         }
-        boolean tag = false;
         // wait 5s to record more info after testing
         ThreadUtils.safeSleep(5000);
         stopRecordService();
@@ -119,35 +120,16 @@ public class PhoneAppScreenRecorder implements ScreenRecorder {
         // wait for screen recording to finish
         ThreadUtils.safeSleep(5000);
 
-        int retryTime = 1;
-        while (retryTime < Const.AgentConfig.RETRY_TIME) {
-            logger.info("Pull file round :" + retryTime);
-            File videoFile = new File(pathOnAgent);
-            if (videoFile.exists()) {
-                videoFile.delete();
-            }
-            try {
-                adbOperateUtil.pullFileToDir(deviceInfo, pathOnAgent, pathOnDevice, logger);
-            } catch (IOException | InterruptedException e) {
-                logger.error(e.getMessage(), e);
-            }
-            ThreadUtils.safeSleep(5000);
-
-            long phoneFileSize = adbOperateUtil.getFileLength(deviceInfo, logger, pathOnDevice);
-            logger.info("PC file path:{} size:{} , Phone file path {} size {}", pathOnAgent, videoFile.length(), pathOnDevice, phoneFileSize);
-            if (videoFile.length() == phoneFileSize) {
-                logger.info("Pull video file success!");
-                tag = true;
-                break;
-            }
-            retryTime++;
-            if (retryTime == Const.AgentConfig.RETRY_TIME) {
-                logger.error("Pull video file fail!");
-            }
+        try {
+            adbOperateUtil.pullFileToDir(deviceInfo, pathOnAgent, pathOnDevice, logger);
+        } catch (IOException | InterruptedException e) {
+            logger.error(e.getMessage(), e);
+            pathOnAgent = null;
         }
-        deviceManager.removeFileInDevice(deviceInfo, pathOnDevice, logger);
+        deviceDriver.removeFileInDevice(deviceInfo, pathOnDevice, logger);
         started = false;
-        return tag;
+
+        return pathOnAgent;
     }
 
     @Override
@@ -158,7 +140,8 @@ public class PhoneAppScreenRecorder implements ScreenRecorder {
     public boolean startRecordService() {
         try {
             // am startservice --es fileName test.mp4 com.microsoft.hydralab.android.client/.ScreenRecorderService
-            adbOperateUtil.execOnDevice(deviceInfo, String.format("am startservice -a %s.action.START --es fileName %s --es SNCode %s --ei width 720 --ei bitrate 1200000 %s/.ScreenRecorderService", recordPackageName, fileName, deviceInfo.getSerialNum(), recordPackageName), new MultiLineNoCancelLoggingReceiver(logger), logger);
+            adbOperateUtil.execOnDevice(deviceInfo, String.format("am startservice -a %s.action.START --es fileName %s --es SNCode %s --ei width 720 --ei bitrate 1200000 %s/.ScreenRecorderService",
+                    RECORD_PACKAGE_NAME, fileName, deviceInfo.getSerialNum(), RECORD_PACKAGE_NAME), new MultiLineNoCancelLoggingReceiver(logger), logger);
             return true;
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
@@ -168,7 +151,7 @@ public class PhoneAppScreenRecorder implements ScreenRecorder {
 
     public boolean stopRecordService() {
         try {
-            adbOperateUtil.execOnDevice(deviceInfo, "am startservice -a " + recordPackageName + ".action.STOP " + recordPackageName + "/.ScreenRecorderService", new MultiLineNoCancelLoggingReceiver(logger), logger);
+            adbOperateUtil.execOnDevice(deviceInfo, "am startservice -a " + RECORD_PACKAGE_NAME + ".action.STOP " + RECORD_PACKAGE_NAME + "/.ScreenRecorderService", new MultiLineNoCancelLoggingReceiver(logger), logger);
             return true;
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
@@ -179,7 +162,7 @@ public class PhoneAppScreenRecorder implements ScreenRecorder {
     public boolean sendKeepAliveSignal() {
 
         try {
-            adbOperateUtil.execOnDevice(deviceInfo, "am startservice -a " + recordPackageName + ".action.SIGNAL " + recordPackageName + "/.ScreenRecorderService", new MultiLineNoCancelLoggingReceiver(logger), logger);
+            adbOperateUtil.execOnDevice(deviceInfo, "am startservice -a " + RECORD_PACKAGE_NAME + ".action.SIGNAL " + RECORD_PACKAGE_NAME + "/.ScreenRecorderService", new MultiLineNoCancelLoggingReceiver(logger), logger);
             return true;
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
@@ -187,14 +170,14 @@ public class PhoneAppScreenRecorder implements ScreenRecorder {
         }
     }
 
-    private void installRecorderServiceApp() throws InstallException {
+    private void installRecorderServiceApp() {
         try {
-            deviceManager.installApp(deviceInfo, recordApk.getAbsolutePath(), logger);
-        } catch (InstallException e) {
+            deviceDriver.installApp(deviceInfo, recordApk.getAbsolutePath(), logger);
+        } catch (HydraLabRuntimeException e) {
             // if failed to install app, uninstall app and try again.
             logger.error(e.getMessage(), e);
-            deviceManager.uninstallApp(deviceInfo, recordPackageName, logger);
-            deviceManager.installApp(deviceInfo, recordApk.getAbsolutePath(), logger);
+            deviceDriver.uninstallApp(deviceInfo, RECORD_PACKAGE_NAME, logger);
+            deviceDriver.installApp(deviceInfo, recordApk.getAbsolutePath(), logger);
         }
     }
 }

@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.t2c.runner;
 
 import java.util.ArrayList;
 
 public class TestInfo {
     ArrayList<DriverInfo> drivers;
-    ArrayList<ActionInfo> cases;
+    ArrayList<ActionInfo> actions;
 
-    public TestInfo(ArrayList<DriverInfo> drivers, ArrayList<ActionInfo> cases){
-        this.cases = cases;
+    public TestInfo(ArrayList<DriverInfo> drivers, ArrayList<ActionInfo> actions) {
+        this.actions = actions;
         this.drivers = drivers;
     }
 
@@ -17,7 +18,7 @@ public class TestInfo {
         return drivers;
     }
 
-    public ArrayList<ActionInfo> getCases() {
-        return cases;
+    public ArrayList<ActionInfo> getActions() {
+        return actions;
     }
 }

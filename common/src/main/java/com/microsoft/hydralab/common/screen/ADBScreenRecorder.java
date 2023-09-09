@@ -1,10 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.common.screen;
 
 import cn.hutool.core.thread.ThreadUtil;
 import com.microsoft.hydralab.common.entity.common.DeviceInfo;
+import com.microsoft.hydralab.common.management.device.DeviceDriver;
 import com.microsoft.hydralab.common.util.ADBOperateUtil;
+import com.microsoft.hydralab.common.util.CommandOutputReceiver;
 import com.microsoft.hydralab.common.util.DateUtil;
 import com.microsoft.hydralab.common.util.ThreadUtils;
 import org.apache.commons.io.IOUtils;
@@ -23,6 +26,9 @@ public class ADBScreenRecorder implements ScreenRecorder {
     private final DeviceInfo deviceInfo;
     private final Logger logger;
     private final File baseFolder;
+
+    private File mergedVideo;
+    private final DeviceDriver deviceDriver;
     public int preSleepSeconds = 0;
     ADBOperateUtil adbOperateUtil;
     private Process recordingProcess;
@@ -30,7 +36,8 @@ public class ADBScreenRecorder implements ScreenRecorder {
     private boolean shouldStop = true;
     private boolean shouldInterrupt = false;
 
-    public ADBScreenRecorder(ADBOperateUtil adbOperateUtil, DeviceInfo deviceInfo, Logger logger, File baseFolder) {
+    public ADBScreenRecorder(DeviceDriver deviceDriver, ADBOperateUtil adbOperateUtil, DeviceInfo deviceInfo, Logger logger, File baseFolder) {
+        this.deviceDriver = deviceDriver;
         this.adbOperateUtil = adbOperateUtil;
         this.deviceInfo = deviceInfo;
         this.logger = logger;
@@ -48,7 +55,6 @@ public class ADBScreenRecorder implements ScreenRecorder {
 
     @Override
     public void setupDevice() {
-
     }
 
     @Override
@@ -69,14 +75,16 @@ public class ADBScreenRecorder implements ScreenRecorder {
                 int totalTime = 0;
                 List<File> list = new ArrayList<>();
                 while (totalTime < maxTimeInSecond && !shouldStop) {
-                    String fileName = String.format("/sdcard/scr_rec_%d_%d.mp4", totalTime, totalTime + timeSpan);
-                    String command = String.format("shell screenrecord --bit-rate 3200000 --time-limit %d %s", timeSpan, fileName);
-                    deviceInfo.addCurrentCommand(command);
+                    String pathOnDevice = String.format("/sdcard/scr_rec_%d_%d.mp4", totalTime, totalTime + timeSpan);
+                    String recordCommand = String.format("shell screenrecord --bit-rate 3200000 --time-limit %d %s", timeSpan, pathOnDevice);
+                    deviceInfo.addCurrentCommand(recordCommand);
                     // Blocking command
-                    recordingProcess = adbOperateUtil.executeDeviceCommandOnPC(deviceInfo, command, logger);
-                    logger.info("ADBDeviceScreenRecorder>> command: " + command);
-                    logger.info(IOUtils.toString(recordingProcess.getInputStream(), StandardCharsets.UTF_8));
-                    logger.error(IOUtils.toString(recordingProcess.getErrorStream(), StandardCharsets.UTF_8));
+                    recordingProcess = adbOperateUtil.executeDeviceCommandOnPC(deviceInfo, recordCommand, logger);
+                    logger.info("ADBDeviceScreenRecorder>> command: " + recordCommand);
+                    CommandOutputReceiver err = new CommandOutputReceiver(recordingProcess.getErrorStream(), logger);
+                    CommandOutputReceiver out = new CommandOutputReceiver(recordingProcess.getInputStream(), logger);
+                    err.start();
+                    out.start();
                     deviceInfo.addCurrentProcess(recordingProcess);
 
                     try {
@@ -91,32 +99,29 @@ public class ADBScreenRecorder implements ScreenRecorder {
                         recordingProcess.destroy();
                     }
                     deviceInfo.finishCommand();
+                    // make sure the recording procedure is stopped completely
+                    ThreadUtil.safeSleep(2000);
 
-                    String outputFilePrefix = new File(baseFolder, DateUtil.fileNameDateDashFormat.format(new Date())).getAbsolutePath();
-
-                    final String outFileFullPath = outputFilePrefix + "_" + totalTime + "_" + (totalTime + timeSpan) + ".mp4";
-                    String pullComm = String.format("pull %s %s", fileName, outFileFullPath);
-                    Process process = adbOperateUtil.executeDeviceCommandOnPC(deviceInfo, pullComm, logger);
-
-                    logger.info(IOUtils.toString(process.getInputStream(), StandardCharsets.UTF_8));
-                    logger.error(IOUtils.toString(process.getErrorStream(), StandardCharsets.UTF_8));
-                    process.destroy();
-
-                    list.add(new File(outFileFullPath));
+                    final String outFileName = DateUtil.fileNameDateDashFormat.format(new Date()) + "_" + totalTime + "_" + (totalTime + timeSpan) + ".mp4";
+                    String pathOnAgent = new File(baseFolder, outFileName).getAbsolutePath();
+                    adbOperateUtil.pullFileToDir(deviceInfo, pathOnAgent, pathOnDevice, logger);
+                    list.add(new File(pathOnAgent));
+                    deviceDriver.removeFileInDevice(deviceInfo, pathOnDevice, logger);
 
                     totalTime += timeSpan;
                     logger.info("ADBDeviceScreenRecorder>> Time recorded {}", totalTime);
                 }
 
                 shouldInterrupt = false;
-                final File mergedVideo = FFmpegConcatUtil.concatVideos(list, baseFolder, logger);
+                logger.info("video list size: " + list.size());
+                mergedVideo = FFmpegConcatUtil.concatVideos(list, baseFolder, logger);
                 ThreadUtil.safeSleep(2000);
                 if (mergedVideo != null && mergedVideo.exists()) {
                     logger.info("deleting merged old videos " + list);
                     list.forEach(File::delete);
                 }
 
-            } catch (IOException e) {
+            } catch (IOException | InterruptedException e) {
                 logger.warn("Exception from recordingThread {} {}", e.getClass().getName(), e.getMessage());
             } finally {
                 if (recordingProcess != null) {
@@ -135,9 +140,9 @@ public class ADBScreenRecorder implements ScreenRecorder {
     }
 
     @Override
-    public boolean finishRecording() {
+    public String finishRecording() {
         if (shouldStop) {
-            return false;
+            return null;
         }
         shouldStop = true;
         if (recordingThread != null && shouldInterrupt) {
@@ -152,14 +157,14 @@ public class ADBScreenRecorder implements ScreenRecorder {
         long time = System.currentTimeMillis();
         try {
             synchronized (lock) {
-                lock.wait(TimeUnit.MINUTES.toMillis(2));
+                lock.wait(TimeUnit.SECONDS.toMillis(30));
             }
         } catch (Exception e) {
-            logger.warn("Exception from recordingThread {} {}", e.getClass().getName(), e.getMessage());
-            return false;
+            logger.warn("Exception from finishRecording {} {}", e.getClass().getName(), e.getMessage());
+            return null;
         }
         logger.info("Complete waiting: {}", (System.currentTimeMillis() - time) / 1000f);
-        return true;
+        return mergedVideo.getAbsolutePath();
     }
 
 }

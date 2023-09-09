@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.center.controller;
 
 import com.alibaba.fastjson.JSONObject;
 import com.microsoft.hydralab.center.service.AgentManageService;
 import com.microsoft.hydralab.center.service.DeviceAgentManagementService;
-import com.microsoft.hydralab.common.util.Const;
 import com.microsoft.hydralab.center.service.SysUserService;
 import com.microsoft.hydralab.center.service.UserTeamManagementService;
 import com.microsoft.hydralab.common.entity.agent.Result;
@@ -13,6 +13,7 @@ import com.microsoft.hydralab.common.entity.center.AgentDeviceGroup;
 import com.microsoft.hydralab.common.entity.center.DeviceGroup;
 import com.microsoft.hydralab.common.entity.center.SysUser;
 import com.microsoft.hydralab.common.entity.common.DeviceInfo;
+import com.microsoft.hydralab.common.util.Const;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,10 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @RestController
 @Slf4j
@@ -72,8 +71,7 @@ public class DeviceManageController {
         }
         deviceGroupList = deviceGroupList.stream()
                 .filter(agentDeviceGroup -> agentDeviceGroup.getDevices() != null && agentDeviceGroup.getDevices().size() > 0)
-                .sorted(Comparator.comparing(AgentDeviceGroup::getAgentDeviceType)
-                        .thenComparing((a, b) -> b.getDevices().size() - a.getDevices().size()))
+                .sorted((a, b) -> b.getDevices().size() - a.getDevices().size())
                 .collect(Collectors.toList());
 
         return Result.ok(deviceGroupList);
@@ -85,8 +83,7 @@ public class DeviceManageController {
         deviceAgentManagementService.requestAllAgentDeviceListUpdate();
         List<AgentDeviceGroup> deviceGroupList = deviceAgentManagementService.getAgentDeviceGroups();
         deviceGroupList = deviceGroupList.stream()
-                .sorted(Comparator.comparing(AgentDeviceGroup::getAgentDeviceType)
-                        .thenComparing((a, b) -> b.getDevices().size() - a.getDevices().size()))
+                .sorted((a, b) -> b.getDevices().size() - a.getDevices().size())
                 .collect(Collectors.toList());
         return Result.ok(deviceGroupList);
     }
@@ -146,6 +143,7 @@ public class DeviceManageController {
      * 3) admin of the TEAM that group is in
      */
     @PostMapping(value = "/api/device/updateDeviceScope", produces = MediaType.APPLICATION_JSON_VALUE)
+    @SuppressWarnings("IllegalCatch")
     public Result updateDeviceScope(@CurrentSecurityContext SysUser requestor,
                                     @RequestParam(value = "deviceSerial") String deviceSerial,
                                     @RequestParam(value = "isPrivate") Boolean isPrivate) {

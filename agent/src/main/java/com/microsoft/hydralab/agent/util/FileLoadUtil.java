@@ -6,9 +6,11 @@ package com.microsoft.hydralab.agent.util;
 import com.microsoft.hydralab.agent.config.AppOptions;
 import com.microsoft.hydralab.common.entity.common.StorageFileInfo;
 import com.microsoft.hydralab.common.entity.common.TestTask;
+import com.microsoft.hydralab.common.file.StorageServiceClientProxy;
 import com.microsoft.hydralab.common.util.CommandOutputReceiver;
 import com.microsoft.hydralab.common.util.FileUtil;
-import com.microsoft.hydralab.common.util.blob.BlobStorageClient;
+import com.microsoft.hydralab.common.util.FlowUtil;
+import com.microsoft.hydralab.common.util.HydraLabRuntimeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -16,7 +18,6 @@ import org.springframework.util.Assert;
 
 import javax.annotation.Resource;
 import java.io.File;
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -26,9 +27,9 @@ public class FileLoadUtil {
     @SuppressWarnings("constantname")
     static final Logger log = LoggerFactory.getLogger(FileLoadUtil.class);
     @Resource
-    private AppOptions appOptions;
+    AppOptions appOptions;
     @Resource
-    BlobStorageClient blobStorageClient;
+    StorageServiceClientProxy storageServiceClientProxy;
 
     public void clearAttachments(TestTask testTask) {
         List<StorageFileInfo> attachments = testTask.getTestFileSet().getAttachments();
@@ -37,7 +38,7 @@ public class FileLoadUtil {
         }
         for (StorageFileInfo attachment : attachments) {
             if (StorageFileInfo.FileType.COMMON_FILE.equals(attachment.getFileType())) {
-                File loadFolder = new File(appOptions.getLocation() + "/" + attachment.getLoadDir());
+                File loadFolder = new File(testTask.getResourceDir() + "/" + attachment.getLoadDir());
                 FileUtil.deleteFile(loadFolder);
             }
         }
@@ -55,20 +56,20 @@ public class FileLoadUtil {
                     installWinApp(attachment);
                     break;
                 case StorageFileInfo.FileType.COMMON_FILE:
-                    loadCommonFile(attachment);
+                    loadCommonFile(attachment, testTask);
                     break;
                 case StorageFileInfo.FileType.APP_FILE:
-                    File appFile = downloadFromBlob(attachment);
+                    File appFile = downloadFile(attachment);
                     Assert.isTrue(appFile != null && appFile.exists(), "Download app file failed!");
                     testTask.setAppFile(appFile);
                     break;
                 case StorageFileInfo.FileType.TEST_APP_FILE:
-                    File testAppFile = downloadFromBlob(attachment);
+                    File testAppFile = downloadFile(attachment);
                     Assert.isTrue(testAppFile != null && testAppFile.exists(), "Download test app file failed!");
                     testTask.setTestAppFile(testAppFile);
                     break;
                 case StorageFileInfo.FileType.T2C_JSON_FILE:
-                    File testJsonFile = downloadFromBlob(attachment);
+                    File testJsonFile = downloadFile(attachment);
                     Assert.isTrue(testJsonFile != null && testJsonFile.exists(), "Download test json file failed!");
                     testTask.addTestJsonFile(testJsonFile);
                     break;
@@ -81,7 +82,7 @@ public class FileLoadUtil {
     public void installWinApp(StorageFileInfo attachment) {
         try {
             Runtime runtime = Runtime.getRuntime();
-            File attachmentFile = downloadFromBlob(attachment, appOptions.getTestPackageLocation(), attachment.getBlobPath());
+            File attachmentFile = downloadFile(attachment, appOptions.getTestPackageLocation(), attachment.getBlobPath());
             String installCommand = "& { Add-AppxPackage -ForceApplicationShutdown -forceupdatefromanyversion -Path '" +
                     attachmentFile.getAbsolutePath() + "' }";
             String[] command = new String[]{"Powershell.exe", "-Command", installCommand};
@@ -92,7 +93,7 @@ public class FileLoadUtil {
             CommandOutputReceiver out = new CommandOutputReceiver(process.getInputStream(), log);
             err.start();
             out.start();
-            process.waitFor(60, TimeUnit.SECONDS);
+            process.waitFor(300, TimeUnit.SECONDS);
             log.info("Install Win-App success");
         } catch (Exception e) {
             log.error("Install Win-App failed", e);
@@ -100,12 +101,11 @@ public class FileLoadUtil {
 
     }
 
-    public void loadCommonFile(StorageFileInfo attachment) {
+    public void loadCommonFile(StorageFileInfo attachment, TestTask testTask) {
         try {
-            File loadFolder = new File(appOptions.getLocation() + "/" + attachment.getLoadDir());
-            Assert.isTrue(!loadFolder.exists(), "Load file error : folder has been existed!");
+            File loadFolder = new File(testTask.getResourceDir(), attachment.getLoadDir());
             log.info("Load common file start filename:{} path:{}", attachment.getFileName(), loadFolder.getAbsolutePath());
-            File attachmentFile = downloadFromBlob(attachment, appOptions.getLocation(), attachment.getLoadDir() + "/" + attachment.getFileName());
+            File attachmentFile = downloadFile(attachment, testTask.getResourceDir().getAbsolutePath(), attachment.getLoadDir() + "/" + attachment.getFileName());
             if (StorageFileInfo.LoadType.UNZIP.equalsIgnoreCase(attachment.getLoadType())) {
                 FileUtil.unzipFile(attachmentFile.getAbsolutePath(), loadFolder.getAbsolutePath());
             }
@@ -115,20 +115,21 @@ public class FileLoadUtil {
         }
     }
 
-    private File downloadFromBlob(StorageFileInfo attachment, String location, String targetFilePath) throws IOException {
+    private File downloadFile(StorageFileInfo attachment, String location, String targetFilePath) throws Exception {
         File file = new File(location, targetFilePath);
         log.debug("download file from {} to {}", attachment.getBlobUrl(), file.getAbsolutePath());
-        blobStorageClient.downloadFileFromBlob(file, attachment.getBlobContainer(), attachment.getBlobPath());
+        FlowUtil.retryAndSleepWhenException(3, 10, () -> storageServiceClientProxy.download(file, attachment));
         return file;
     }
 
-    private File downloadFromBlob(StorageFileInfo attachment) {
+    private File downloadFile(StorageFileInfo attachment) {
         File file = null;
         try {
-            file = downloadFromBlob(attachment, appOptions.getTestPackageLocation(), attachment.getBlobPath());
+            file = downloadFile(attachment, appOptions.getTestPackageLocation(), attachment.getBlobPath());
             log.info("Download file success");
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("Download file failed", e);
+            throw new HydraLabRuntimeException("Download file failed", e);
         }
         return file;
     }

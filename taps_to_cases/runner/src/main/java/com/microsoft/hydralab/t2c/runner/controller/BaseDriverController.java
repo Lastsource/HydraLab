@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
 package com.microsoft.hydralab.t2c.runner.controller;
 
 import com.microsoft.hydralab.t2c.runner.elements.AndroidElementInfo;
@@ -21,9 +22,11 @@ import java.time.Duration;
 public abstract class BaseDriverController {
     protected WebDriver webDriver;
     protected Logger logger;
+    protected String udid;
 
-    public BaseDriverController(WebDriver webDriver, Logger logger) {
+    public BaseDriverController(WebDriver webDriver, String udid, Logger logger) {
         this.webDriver = webDriver;
+        this.udid = udid;
         this.logger = logger;
     }
 
@@ -33,6 +36,7 @@ public abstract class BaseDriverController {
 
     /**
      * Send content via keyboard, this will send the string directly to the current focus element
+     *
      * @param content string you want to input with
      */
     public void sendKeys(String content) {
@@ -156,7 +160,6 @@ public abstract class BaseDriverController {
                     });
         } catch (Exception e) {
             logger.info("Can not find element by AccessibilityId: " + accessibilityId);
-            e.printStackTrace();
         }
         return elementFound;
     }
@@ -185,10 +188,23 @@ public abstract class BaseDriverController {
         return elementFound;
     }
 
+    @Nullable
+    public WebElement findElementByName(String name) {
+        WebElement elementFound = null;
+        try {
+            elementFound = new WebDriverWait(webDriver, Duration.ofSeconds(10))
+                    .until(driver -> driver.findElement(AppiumBy.xpath("//*[@name='" + name + "']")));
+        } catch (Exception e) {
+            logger.info("Can not find element by name: " + name);
+        }
+        return elementFound;
+    }
+
 
     /**
      * In windows, id refers to {@link WindowsElementInfo#getName()}
      * In android, id refers to {@link AndroidElementInfo#getResourceId()}
+     *
      * @param id
      * @return
      */
@@ -204,7 +220,12 @@ public abstract class BaseDriverController {
         return elementFound;
     }
 
-
     public abstract String getPageSource();
 
+    public abstract void inspectMemoryUsage(String targetApp, String description, boolean isReset);
+
+    public abstract void inspectBatteryUsage(String targetApp, String description, boolean isReset);
+
+    public void backToHome() {
+    }
 }

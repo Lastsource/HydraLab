@@ -17,10 +17,9 @@ class DeviceGroupServiceTest extends BaseTest {
     DeviceGroupService deviceGroupService;
     @Resource
     SysTeamService sysTeamService;
-    
+
     String groupName = "GROUP";
     String deviceSerial = "DEVICE";
-
 
     @Test
     void testDeviceGroupManagement() {

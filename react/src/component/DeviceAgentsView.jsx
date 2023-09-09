@@ -11,13 +11,32 @@ import LoadingButton from "@mui/lab/LoadingButton";
 import Skeleton from "@mui/material/Skeleton";
 import BaseView from "@/component/BaseView";
 import IconButton from "@material-ui/core/IconButton";
-import Tooltip from "@mui/material/Tooltip";
+import { default as MUITooltip } from "@mui/material/Tooltip";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
+import '../css/deviceAgentsView.css';
+import _ from 'lodash';
+import { AreaChart, Area, XAxis, YAxis, PieChart, Tooltip, Pie, Cell, Legend, ReferenceLine } from 'recharts';
+import { string } from 'prop-types';
+const COLORS = ['#00C49F', '#90C12F', '#44C16F', '#00C12F', '#00612F', '#59C12F', '#0061FF', '#0061aa'];
+const RADIAN = Math.PI / 180;
+const PieCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.75;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    return (
+        <text x={x} y={y} fill="white" fontSize={12} textAnchor={x > cx ? 'start' : 'end'}
+            dominantBaseline="central">
+            {`${(percent * 100).toFixed(1)}%`}
+        </text>
+    );
+};
 
 export default class DeviceAgentsView extends BaseView {
+
     state = {
         agents: null,
         collapseStatus: {},
@@ -31,139 +50,329 @@ export default class DeviceAgentsView extends BaseView {
         const { agents, refreshing } = this.state;
         const { snackbarIsShown, snackbarSeverity, snackbarMessage } = this.state
         const agentRows = []
+        var agentChartData = []
+        var deviceChartData = []
+        var deviceStatusChartData = []
+        var deviceModelChartData = []
+        var deviceCount = "-"
+        var agentCount = "-"
+        var overallPieSize = 0
         if (agents) {
             const folderHeadBgColor = '#1565c0'
-            const topRadius = '10px'
-            agents.map((agent) => {
-                agentRows.push(
-                    <tbody key={agent.agentId}>
-                        <tr style={{ color: 'white' }}>
-                            <th width="100%" style={{ backgroundColor: folderHeadBgColor, color: 'white', borderRadius: topRadius + ' 0px 0px 0px' }} onClick={() => this.changeCollapseStatus(agent.agentId)}>
-                                {agent.agentName}: {agent.devices.length}
-                            </th>
-                            <th style={{ backgroundColor: folderHeadBgColor, color: 'white' }}>
-                                {Number(agent.agentVersionCode) >= Number(this.state.latestAgentVersion) ?
-                                    <Tooltip
-                                        title={
-                                            <Stack>
-                                                Host:{agent.hostname}<br />
-                                                Version:{agent.agentVersionName}<br />
-                                                OS:{agent.agentOS}
-                                            </Stack>}
-                                        style={{ padding: "0" }}>
-                                        <IconButton>
-                                            <span style={{ color: 'white', }}
-                                                className="material-icons-outlined">info</span>
-                                        </IconButton>
-                                    </Tooltip>
-                                    : agent.agentStatus === "UPDATING" ?
-                                        <Tooltip
-                                            title={this.state.agentUpdateStatus}
-                                            onOpen={() => this.getUpdateStatus(agent.agentId)}
-                                            style={{ padding: "0" }}>
-                                            <Button color="inherit" size="small" style={{ padding: "0" }}>
-                                                Updating
-                                            </Button>
-                                        </Tooltip> :
-                                        <Button variant="contained" color="error" size="small"
-                                            style={{ padding: "0" }}
-                                            onClick={() => this.updateAgent(agent)}>
-                                            Update
-                                        </Button>
-                                }
-                            </th>
-                            <th onClick={() => this.changeCollapseStatus(agent.agentId)} style={{ backgroundColor: folderHeadBgColor }}>
-                                {agent.userName}
-                            </th>
-                            <th align='right' onClick={() => this.changeCollapseStatus(agent.agentId)} style={{ backgroundColor: folderHeadBgColor, borderRadius: '0px ' + topRadius + ' 0px 0px' }}>
-                                {this.state.collapseStatus[agent.agentId] ?
-                                    <span className="material-icons-outlined">expand_less</span> :
-                                    <span className="material-icons-outlined">expand_more</span>}
-                            </th>
-                        </tr>
-                        <tr>
-                            <td align='center'
-                                colSpan='3'>
-                                {agent.groupedDevices.map((group) => {
-                                    return <table className="table table-borderless scrollable">
-                                        <tbody key={group[0].name}>
-                                            <tr><Collapse in={this.state.collapseStatus[agent.agentId]}>
-                                                {group.map((item) => {
-                                                    return <td key={item.deviceId}
-                                                        align='center'>
-                                                        <DeviceDetailView deviceItem={item} />
-                                                    </td>
-                                                })}
-                                            </Collapse>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                }
-                                )}
-                            </td>
-                        </tr>
-                    </tbody>)
-            }
-            )
-        }
-        return <div>
-            <table className="table table-borderless">
-                <thead>
-                    <tr>
-                        <th colSpan="2">
-                            <Typography variant="h4" className="mt-2 mb-2">
-                                Connected Devices</Typography>
-                        </th>
-                        <th colSpan="2" style={{ textAlign: "right", verticalAlign: "middle" }}>
-                            <LoadingButton
-                                variant="contained"
-                                className="pl-4 pr-4"
-                                loading={refreshing}
-                                loadingPosition="end"
-                                endIcon={<span
-                                    className="material-icons-outlined">sync</span>}
-                                onClick={this.updateDeviceListData}
+            deviceCount = _.sumBy(agents, function (o) { return o.devices.length; })
+            agentCount = agents.length
 
-                            >
-                                Refresh
-                            </LoadingButton>
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td colSpan='3' align="center" hidden={!this.state.refreshing}>
-                            <Skeleton variant="text" className="w-100 p-3"
-                                height={100} />
-                            <Skeleton variant="text" className="w-100 p-3"
-                                height={100} />
-                            <Skeleton variant="text" className="w-100 p-3"
-                                height={100} />
-                        </td>
-                    </tr>
-                </tbody>
+            var agentCountByOS = _.countBy(agents, function (o) { return o.agentOS; })
+            for (var k in agentCountByOS) {
+                var c = agentCountByOS[k]
+                if (k === "null" || k == 0 || k == "0" || !k) {
+                    k = "Unknown"
+                    if (agentChartData["Unknown"])
+                        c += agentChartData["Unknown"]
+                }
+                agentChartData.push({ name: k, count: c })
+            }
+
+            let mergedDeviceList = _.flatMap(agents, item => item.devices);
+            var deviceCountByType = _.countBy(mergedDeviceList, function (o) { return o.type; })
+            for (var k in deviceCountByType) {
+                var c = deviceCountByType[k]
+                if (k === "null" || k == 0 || k == "0" || !k) {
+                    k = "Unknown"
+                    if (deviceChartData["Unknown"])
+                        c += deviceChartData["Unknown"]
+                }
+                deviceChartData.push({ name: k, count: c })
+            }
+
+            var deviceCountByStatus = _.countBy(mergedDeviceList, function (o) { return o.status; })
+            for (var k in deviceCountByStatus) {
+                var c = deviceCountByStatus[k]
+                if (k === "null" || k == 0 || k == "0" || !k) {
+                    k = "Unknown"
+                    if (deviceStatusChartData["Unknown"])
+                        c += deviceStatusChartData["Unknown"]
+                }
+                deviceStatusChartData.push({ name: k, count: c })
+            }
+
+            // var deviceCountByModel = _.countBy(mergedDeviceList, function (o) { return o.model; })
+            // for (var k in deviceCountByModel) {
+            //     var c = deviceCountByModel[k]
+            //     if (k === "null" || k == 0 || k == "0" || !k) {
+            //         k = "Unknown"
+            //         if (deviceModelChartData["Unknown"])
+            //             c += deviceModelChartData["Unknown"]
+            //     }
+            //     deviceModelChartData.push({ name: k, count: c })
+            // }
+
+            overallPieSize = 420
+
+            agents.map(
+                (agent) => {
+                    agentRows.push(
+                        <div class='deviceAgents-agent'>
+                            <div
+                                class='deviceAgents-agentBanner'
+                                style={{ backgroundColor: folderHeadBgColor }}
+                                onClick={() => this.changeCollapseStatus(agent.agentId)}>
+
+                                <div style={{ color: 'white', fontSize: 'large', fontWeight: 'bold' }}>
+                                    {agent.agentName}: {agent.devices.length}
+                                </div>
+
+                                <div class='deviceAgents-agentBanner-tail'>
+                                    <div style={{ color: 'white' }}>
+                                        {
+                                            <div>
+                                                {
+                                                    Number(agent.agentVersionCode) >= Number(this.state.latestAgentVersion) ?
+                                                    <MUITooltip
+                                                        title={
+                                                            <Stack>
+                                                                Host:{agent.hostname}<br />
+                                                                Version:{agent.agentVersionName}<br />
+                                                                OS:{agent.agentOS}
+                                                            </Stack>}
+                                                        style={{ padding: "0" }}>
+                                                        <IconButton>
+                                                            <span style={{ color: 'white', }}
+                                                                className="material-icons-outlined">info</span>
+                                                        </IconButton>
+                                                    </MUITooltip>
+                                                    :
+                                                    agent.agentStatus === "UPDATING" ?
+                                                        <MUITooltip
+                                                            title={this.state.agentUpdateStatus}
+                                                            onOpen={() => this.getUpdateStatus(agent.agentId)}
+                                                            style={{ padding: "0" }}>
+                                                            <Button color="inherit" size="small" style={{ padding: "0" }}>
+                                                                Updating
+                                                            </Button>
+                                                        </MUITooltip>
+                                                        :
+                                                        <Button variant="contained" color="error" size="small"
+                                                            style={{ padding: "0" }}
+                                                            onClick={() => this.updateAgent(agent)}>
+                                                            Update
+                                                        </Button>
+                                                }
+                                                <MUITooltip
+                                                    title={
+                                                        <Stack>
+                                                            <div style={{ userSelect: 'none', padding: 2, fontSize: '0.8rem' }}>
+                                                                Drivers:
+                                                                {
+                                                                    agent.functionAvailabilities
+                                                                    .filter(
+                                                                        (fa) => fa.functionType === "DEVICE_DRIVER"
+                                                                    )
+                                                                    .sort(
+                                                                        (fa1, fa2) => {
+                                                                            var s1 = 0
+                                                                            var s2 = 0
+                                                                            s1 += fa1.available ? 1 : 0
+                                                                            s1 += fa1.enabled ? 1 : 0
+                                                                            s2 += fa2.available ? 1 : 0
+                                                                            s2 += fa2.enabled ? 1 : 0
+                                                                            return s2 - s1
+                                                                        }
+                                                                    )
+                                                                    .map(
+                                                                        (fa) => this.convertFunctionAvailability(fa)
+                                                                    )
+                                                                }
+                                                            </div>
+                                                            <div style={{ userSelect: 'none', padding: 2, fontSize: '0.8rem' }}>
+                                                                Runners:
+                                                                {
+                                                                    agent.functionAvailabilities
+                                                                    .filter(
+                                                                        (fa) => fa.functionType === "TEST_RUNNER"
+                                                                    )
+                                                                    .sort(
+                                                                        (fa1, fa2) => {
+                                                                            var s1 = 0
+                                                                            var s2 = 0
+                                                                            s1 += fa1.available ? 1 : 0
+                                                                            s1 += fa1.enabled ? 1 : 0
+                                                                            s2 += fa2.available ? 1 : 0
+                                                                            s2 += fa2.enabled ? 1 : 0
+                                                                            return s2 - s1
+                                                                        }
+                                                                    )
+                                                                    .map(
+                                                                        (fa) => this.convertFunctionAvailability(fa)
+                                                                    )
+                                                                }
+                                                            </div>
+                                                        </Stack>}
+                                                    style={{ padding: 0, paddingLeft: 4 }}>
+                                                    <IconButton>
+                                                        <span style={{ color: 'white', }}
+                                                            className="material-icons-outlined">domain_verification</span>
+                                                    </IconButton>
+                                                </MUITooltip>
+                                            </div>
+                                        }
+                                    </div>
+                                    <div style={{ color: 'white', minWidth: 200 }}>
+                                        {agent.userName}
+                                    </div>
+                                    <div style={{ color: 'white' }}>
+                                        {
+                                            this.state.collapseStatus[agent.agentId] ?
+                                                <span className="material-icons-outlined">expand_less</span> :
+                                                <span className="material-icons-outlined">expand_more</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            <Collapse in={this.state.collapseStatus[agent.agentId]}>
+                                <div className='deviceAgents-devicesList'>
+                                    {
+                                        agent.devices.map((d) => {
+                                            return <DeviceDetailView deviceItem={d} />
+                                        })
+                                    }
+                                </div>
+                            </Collapse>
+                        </div>)
+                })
+        }
+        return (
+            <div className='deviceAgents'>
+                <div className='deviceAgents-header'>
+                    <Typography variant="h4" className="mt-2 mb-2">Connected Devices</Typography>
+                    <div style={{ display: 'flex', gap: '16px' }}>
+                        <Button
+                            variant="outlined"
+                            className="pl-4 pr-4"
+                            endIcon={<span className="material-icons-outlined">auto_awesome_motion</span>}
+                            onClick={this.setAllCollapseStatus}>
+                            Collapse
+                        </Button>
+                        <LoadingButton
+                            variant="contained"
+                            className="pl-4 pr-4"
+                            loading={refreshing}
+                            loadingPosition="end"
+                            endIcon={<span className="material-icons-outlined">sync</span>}
+                            onClick={this.updateDeviceListData}>
+                            Refresh
+                        </LoadingButton>
+                    </div>
+                </div>
+                <div className='deviceAgents-header'>
+                    <Typography variant="h6" className="mt-2 mb-2" align='left'>
+                        <span className="badge badge-primary">{agentCount}</span> agents, <span className="badge badge-success">{deviceCount}</span> devices
+                    </Typography>
+                </div>
+                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }} className="deviceAgents-header mt-2 mb-2">
+                    <div>
+                        <Typography variant="h6" className="mt-2 mb-2" align='center'>Test Agent OS</Typography>
+                        <PieChart width={overallPieSize} height={overallPieSize}
+                            title="Test Agent OS">
+                            <Pie
+                                data={agentChartData}
+                                labelLine={false}
+                                label={PieCustomizedLabel}
+                                dataKey="count">
+                                {agentChartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`}
+                                        fill={COLORS[index % COLORS.length]} />
+                                ))}
+                            </Pie>
+                            <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+                            <Tooltip />
+                        </PieChart>
+                    </div>
+                    <div>
+                        <Typography variant="h6" className="mt-2 mb-2" align='center'>Test Device OS</Typography>
+                        <PieChart width={overallPieSize} height={overallPieSize}>
+                            <Pie
+                                data={deviceChartData}
+                                labelLine={false}
+                                label={PieCustomizedLabel}
+                                dataKey="count">
+                                {deviceChartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`}
+                                        fill={COLORS[index % COLORS.length]} />
+                                ))}
+                            </Pie>
+                            <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+                            <Tooltip />
+                        </PieChart>
+                    </div>
+                    <div>
+                        <Typography variant="h6" className="mt-2 mb-2" align='center'>Test Device State</Typography>
+                        <PieChart width={overallPieSize} height={overallPieSize}>
+                            <Pie
+                                data={deviceStatusChartData}
+                                labelLine={false}
+                                label={PieCustomizedLabel}
+                                dataKey="count">
+                                {deviceStatusChartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`}
+                                        fill={COLORS[index % COLORS.length]} />
+                                ))}
+                            </Pie>
+                            <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+                            <Tooltip />
+                        </PieChart>
+                    </div>
+
+                    {/* <PieChart width={overallPieSize} height={overallPieSize}>
+                        <Pie
+                            data={deviceModelChartData}
+                            labelLine={false}
+                            label={PieCustomizedLabel}
+                            dataKey="count">
+                            {deviceModelChartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`}
+                                    fill={COLORS[index % COLORS.length]} />
+                            ))}
+                        </Pie>
+                        <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+                        <Tooltip />
+                    </PieChart> */}
+                </div>
+                <div>
+                    
+                </div>
                 {agentRows}
-            </table>
-            <Snackbar
-                anchorOrigin={{
-                    vertical: 'top',
-                    horizontal: 'center'
-                }}
-                open={snackbarIsShown}
-                autoHideDuration={3000}
-                onClose={() => this.handleStatus("snackbarIsShown", false)}>
-                <Alert
-                    onClose={() => this.handleStatus("snackbarIsShown", false)}
-                    severity={snackbarSeverity}>
-                    {snackbarMessage}
-                </Alert>
-            </Snackbar>
-        </div>
+                <Snackbar
+                    anchorOrigin={{
+                        vertical: 'top',
+                        horizontal: 'center'
+                    }}
+                    open={snackbarIsShown}
+                    autoHideDuration={3000}
+                    onClose={() => this.handleStatus("snackbarIsShown", false)}>
+                    <Alert
+                        onClose={() => this.handleStatus("snackbarIsShown", false)}
+                        severity={snackbarSeverity}>
+                        {snackbarMessage}
+                    </Alert>
+                </Snackbar>
+            </div>
+        )
     }
 
     changeCollapseStatus(agentId) {
         const collapseStatusNew = this.state.collapseStatus
         collapseStatusNew[agentId] = !this.state.collapseStatus[agentId]
+        this.setState({
+            collapseStatus: collapseStatusNew,
+        })
+    }
+
+    setAllCollapseStatus = () => {
+        const collapseStatusNew = this.state.collapseStatus
+        for (const key in collapseStatusNew) {
+            collapseStatusNew[key] = false
+        }
         this.setState({
             collapseStatus: collapseStatusNew,
         })
@@ -235,6 +444,85 @@ export default class DeviceAgentsView extends BaseView {
         }).catch((error) => {
             this.snackBarError(error)
         })
+    }
+
+    convertFunctionAvailability(availability) {
+        var color = "YellowGreen"
+        var icon = "check"
+        var requires = null
+        if (availability.available === false) {
+            color = "DarkGray"
+            icon = "close"
+            requires = []
+            availability.envCapabilityRequirements.map(
+                (r) => {
+                    if (r.ready === false) {
+                        requires.push(r.envCapability.keyword)
+                    }
+                }
+            )
+        } else if (availability.enabled === false) {
+            color = "OrangeRed"
+            icon = "block"
+        }
+
+        var name = "";
+        if (availability.functionName.endsWith("AndroidDeviceDriver")) {
+            name = "Android"
+        } else if (availability.functionName.endsWith("IOSDeviceDriver")) {
+            name = "iOS"
+        } else if ((availability.functionName.endsWith("WindowsDeviceDriver"))) {
+            name = "Windows"
+        } else if ((availability.functionName.endsWith("EspressoRunner"))) {
+            name = "Espresso"
+        } else if ((availability.functionName.endsWith("AppiumRunner"))) {
+            name = "Appium"
+        } else if ((availability.functionName.endsWith("AppiumCrossRunner"))) {
+            name = "Appium Cross"
+        } else if ((availability.functionName.endsWith("SmartRunner"))) {
+            name = "Smart"
+        } else if ((availability.functionName.endsWith("AdbMonkeyRunner"))) {
+            name = "ADB Monkey"
+        } else if ((availability.functionName.endsWith("AppiumMonkeyRunner"))) {
+            name = "Appium Monkey"
+        } else if ((availability.functionName.endsWith("T2CRunner"))) {
+            name = "T2C"
+        } else if ((availability.functionName.endsWith("XCTestRunner"))) {
+            name = "XCTest"
+        } else if ((availability.functionName.endsWith("MaestroRunner"))) {
+            name = "Maestro"
+        } else if ((availability.functionName.endsWith("PythonRunner"))) {
+            name = "Python"
+        }
+
+        return (
+            <div style={{ display: 'flex', fontSize: '0.75rem', paddingLeft: 8, color: color, alignItems: 'center' } }>
+                <span style={{ color: 'white', fontSize: '0.8rem', userSelect: 'none', marginRight: 4 }}
+                    className="material-icons-outlined" >{icon}</span>
+                <span style={{userSelect: 'none'}}>{name}</span>
+                {
+                    requires === null ? null :
+                    <MUITooltip
+                        title={
+                            <Stack>
+                                <text style={{ fontSize: '0.8rem' }}>Absent Dependency:</text>
+                                {
+                                    requires.map(
+                                        (r) => {
+                                            return <span style={{ fontSize: '0.8rem', color: 'OrangeRed' }}>{r}</span>
+                                        }
+                                    )
+                                }
+                            </Stack>}
+                        placement='right'
+                        style={{ padding: "0" }}>
+                        <IconButton>
+                            <span style={{ color: 'orange', fontSize: '1.05rem', marginLeft: 4 }} className="material-icons-outlined">info</span>
+                        </IconButton>
+                    </MUITooltip>
+                }
+            </div>
+        )
     }
 
     updateAgent(agent) {

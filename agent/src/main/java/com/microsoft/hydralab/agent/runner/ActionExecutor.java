@@ -6,12 +6,16 @@ package com.microsoft.hydralab.agent.runner;
 import com.alibaba.fastjson.JSONObject;
 import com.microsoft.hydralab.common.entity.common.DeviceAction;
 import com.microsoft.hydralab.common.entity.common.DeviceInfo;
-import com.microsoft.hydralab.common.management.DeviceManager;
+import com.microsoft.hydralab.common.entity.common.TestRunDevice;
+import com.microsoft.hydralab.common.management.device.DeviceDriver;
+import com.microsoft.hydralab.common.util.Const;
 import com.microsoft.hydralab.common.util.HydraLabRuntimeException;
 import com.microsoft.hydralab.common.util.ThreadUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -21,34 +25,43 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author zhoule
  * @date 12/20/2022
  */
 
+@Service
 public class ActionExecutor {
     /**
      * the implementation of supported actions should not be overload
      */
-    private Set<String> actionTypes =
+    private final Set<String> actionTypes =
             Set.of("setProperty", "setDefaultLauncher", "backToHome", "changeGlobalSetting",
                     "changeSystemSetting", "execCommandOnDevice", "execCommandOnAgent", "pushFileToDevice",
-                    "pullFileFromDevice");
+                    "pullFileFromDevice", "addToBatteryWhiteList");
 
-    public List<Exception> doActions(@NotNull DeviceManager deviceManager, @NotNull DeviceInfo deviceInfo,
+    public List<Exception> doActions(@NotNull DeviceDriver deviceDriverManager,
+                                     @NotNull TestRunDevice testRunDevice,
                                      @NotNull Logger logger,
-                                     @NotNull Map<String, List<DeviceAction>> actions, @NotNull String when) {
+                                     @NotNull Map<String, List<DeviceAction>> actions, @NotNull String when, boolean runOnAgentOnly) {
         List<Exception> exceptions = new ArrayList<>();
         //filter todoActions
-        List<DeviceAction> todoActions = actions.getOrDefault(when, new ArrayList<>()).stream()
-                .filter(deviceAction -> actionTypes.contains(deviceAction.getMethod()))
-                .collect(Collectors.toList());
+        Stream<DeviceAction> legalActionStream = actions.getOrDefault(when, new ArrayList<>()).stream()
+                .filter(deviceAction -> actionTypes.contains(deviceAction.getMethod()));
+        if (runOnAgentOnly) {
+            legalActionStream = legalActionStream.filter(deviceAction -> Const.OperatedDevice.AGENT.equalsIgnoreCase(deviceAction.getDeviceType()));
+        } else {
+            legalActionStream = legalActionStream.filter(
+                    deviceAction -> StringUtils.isEmpty(deviceAction.getDeviceType()) || testRunDevice.getDeviceInfo().getType().equalsIgnoreCase(deviceAction.getDeviceType()));
+        }
+        List<DeviceAction> todoActions = legalActionStream.collect(Collectors.toList());
 
         logger.info("Start to execute actions! Current timing is {}, action size is {}", when, todoActions.size());
         for (DeviceAction deviceAction : todoActions) {
             try {
-                doAction(deviceManager, deviceInfo, logger, deviceAction);
+                doAction(deviceDriverManager, testRunDevice, logger, deviceAction);
             } catch (InvocationTargetException | IllegalAccessException | HydraLabRuntimeException e) {
                 exceptions.add(e);
                 logger.error("Execute {} action: fail", deviceAction.getMethod(), e);
@@ -59,18 +72,20 @@ public class ActionExecutor {
         return exceptions;
     }
 
-    public void doAction(@NotNull DeviceManager deviceManager, @NotNull DeviceInfo deviceInfo,
-                         @NotNull Logger logger,
-                         @NotNull DeviceAction deviceAction)
+    private void doAction(@NotNull DeviceDriver deviceDriverManager,
+                          @NotNull TestRunDevice testRunDevice,
+                          @NotNull Logger logger,
+                          @NotNull DeviceAction deviceAction)
             throws InvocationTargetException, IllegalAccessException {
         if (!actionTypes.contains(deviceAction.getMethod())) {
             return;
         }
+        DeviceInfo deviceInfo = testRunDevice.getDeviceInfo();
         logger.info("Start to analysis action type! Current action is {}", deviceAction.getMethod());
-        Method method = Arrays.stream(deviceManager.getClass().getMethods())
+        Method method = Arrays.stream(deviceDriverManager.getClass().getMethods())
                 .filter(tempMethod -> tempMethod.getName().equals(deviceAction.getMethod()))
                 .findFirst().orElse(
-                        Arrays.stream(deviceManager.getClass().getDeclaredMethods())
+                        Arrays.stream(deviceDriverManager.getClass().getDeclaredMethods())
                                 .filter(tempMethod -> tempMethod.getName().equals(deviceAction.getMethod()))
                                 .findFirst().orElse(null)
                 );
@@ -85,7 +100,7 @@ public class ActionExecutor {
 
         logger.info("Start to execute action! Current action is {}", deviceAction.getMethod());
         method.setAccessible(true);
-        method.invoke(deviceManager, methodArgs);
+        method.invoke(deviceDriverManager, methodArgs);
     }
 
     private Object[] convertArgs(@NotNull DeviceInfo deviceInfo, @NotNull Logger logger,
@@ -112,5 +127,4 @@ public class ActionExecutor {
         }
         return methodArgs;
     }
-
 }
